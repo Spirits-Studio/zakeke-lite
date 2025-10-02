@@ -449,6 +449,38 @@ const Selector: FunctionComponent<{}> = () => {
             
             if (frontImage?.imageID && frontAreaId) {
               await addItemImage(frontImage.imageID, frontAreaId);
+
+              window.parent.postMessage({
+                customMessageType: 'labelAdded',
+                message: {
+                  'order': {
+                    'bottle': productObject.selections.bottle,
+                    'liquid': productObject.selections.liquid,
+                    'closure': productObject.selections.closure,
+                    'label': productObject.selections.label,
+                    'closureExtras': productObject.selections.closureExtras,
+                  },
+                  'designSide': designSide,
+                  'designExport': designExport,
+                  'productSku': product?.sku ?? null,
+                }
+              }, '*');
+
+              console.log("postMessage Content:", {
+                customMessageType: 'labelAdded',
+                message: {
+                  'order': {
+                    'bottle': productObject.selections.bottle,
+                    'liquid': productObject.selections.liquid,
+                    'closure': productObject.selections.closure,
+                    'label': productObject.selections.label,
+                    'closureExtras': productObject.selections.closureExtras,
+                  },
+                  'designSide': designSide,
+                  'designExport': designExport,
+                  'productSku': product?.sku ?? null,
+                }
+              });
             }
           
           } else if(designSide === "back") {
@@ -464,6 +496,38 @@ const Selector: FunctionComponent<{}> = () => {
   
             if (backImage?.imageID && backAreaId) {
               await addItemImage(backImage.imageID, backAreaId);
+
+              window.parent.postMessage({
+                customMessageType: 'labelAdded',
+                message: {
+                  'order': {
+                    'bottle': productObject.selections.bottle,
+                    'liquid': productObject.selections.liquid,
+                    'closure': productObject.selections.closure,
+                    'label': productObject.selections.label,
+                    'closureExtras': productObject.selections.closureExtras,
+                  },
+                  'designSide': designSide,
+                  'designExport': designExport,
+                  'productSku': product?.sku ?? null,
+                }
+              }, '*');
+
+              console.log("postMessage Content:", {
+                customMessageType: 'labelAdded',
+                message: {
+                  'order': {
+                    'bottle': productObject.selections.bottle,
+                    'liquid': productObject.selections.liquid,
+                    'closure': productObject.selections.closure,
+                    'label': productObject.selections.label,
+                    'closureExtras': productObject.selections.closureExtras,
+                  },
+                  'designSide': designSide,
+                  'designExport': designExport,
+                  'productSku': product?.sku ?? null,
+                }
+              });
             }
           }
         }
