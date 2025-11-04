@@ -318,6 +318,7 @@ const Selector: FunctionComponent<{}> = () => {
     const seenTrue   = useRef(false);
     const prev       = useRef(isSceneLoading);
     const postedOnce = useRef(false); // per-mount guard
+    const sceneLoadedPostedRef = useRef(false);
 
     useEffect(() => {
       // record if we've *ever* seen true
@@ -347,6 +348,52 @@ const Selector: FunctionComponent<{}> = () => {
 
       prev.current = isSceneLoading;
     }, [isSceneLoading]);
+
+    useEffect(() => {
+      const handler = () => {
+        if (sceneLoadedPostedRef.current) return;
+        sceneLoadedPostedRef.current = true;
+        window.parent?.postMessage(
+          { customMessageType: 'sceneLoaded', message: { closeLoadingScreen: true } },
+          '*'
+        );
+      };
+
+      const tryAttach = () => {
+        const viewer = (window as any)?.ZakekeViewer;
+        const onSceneLoaded = viewer?.api?.onSceneLoaded;
+        if (typeof onSceneLoaded !== 'function') return null;
+        const unsubscribe = onSceneLoaded(handler);
+        if (typeof unsubscribe === 'function') {
+          return unsubscribe;
+        }
+        if (typeof viewer?.api?.offSceneLoaded === 'function') {
+          return () => viewer.api.offSceneLoaded(handler);
+        }
+        return () => {};
+      };
+
+      let cleanup: (() => void) | null = tryAttach();
+      if (cleanup) {
+        return () => {
+          if (cleanup) cleanup();
+        };
+      }
+
+      const interval = window.setInterval(() => {
+        if (!cleanup) {
+          cleanup = tryAttach();
+        }
+        if (cleanup) {
+          window.clearInterval(interval);
+        }
+      }, 200);
+
+      return () => {
+        if (cleanup) cleanup();
+        window.clearInterval(interval);
+      };
+    }, []);
 
     // --- UI navigation state (must be declared before effects that depend on them) ---
     const [selectedGroupId, selectGroup] = useState<number | null>(null);
