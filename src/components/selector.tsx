@@ -362,13 +362,27 @@ const Selector: FunctionComponent<{}> = () => {
       const tryAttach = () => {
         const viewer = (window as any)?.ZakekeViewer;
         const onSceneLoaded = viewer?.api?.onSceneLoaded;
+        const offSceneLoaded = viewer?.api?.offSceneLoaded;
+        const isAlreadyLoaded = () => {
+          try {
+            if (typeof viewer?.api?.isSceneLoaded === 'function') {
+              return !!viewer.api.isSceneLoaded();
+            }
+          } catch {}
+          return viewer?.api?.sceneLoaded === true;
+        };
+
+        if (viewer?.api && isAlreadyLoaded()) {
+          handler();
+        }
+
         if (typeof onSceneLoaded !== 'function') return null;
         const unsubscribe = onSceneLoaded(handler);
         if (typeof unsubscribe === 'function') {
           return unsubscribe;
         }
-        if (typeof viewer?.api?.offSceneLoaded === 'function') {
-          return () => viewer.api.offSceneLoaded(handler);
+        if (typeof offSceneLoaded === 'function') {
+          return () => offSceneLoaded(handler);
         }
         return () => {};
       };
