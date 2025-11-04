@@ -1,13 +1,73 @@
-import React, { FunctionComponent, useEffect, useMemo, useRef, useState, useCallback, useLayoutEffect } from 'react';
+import React, { FunctionComponent, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 // import styled from 'styled-components';
 import { useZakeke } from 'zakeke-configurator-react';
-import { LayoutWrapper, ContentWrapper, Container,  StepTitle, OptionListItem, RotateNotice, NavButton, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, ClosureSections, SectionTitle, SwatchGrid, SwatchButton, SwatchNoneLabel, LabelGrid, LabelCard, LabelCardTitle, ActionsCenter, ConfigWarning, ViewportSpacer } from './list';
+import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, ClosureSections, SectionTitle, SwatchGrid, SwatchButton, SwatchNoneLabel, LabelGrid, LabelCard, LabelCardTitle, ActionsCenter, ConfigWarning, ViewportSpacer } from './list';
 // import { List, StepListItem, , ListItemImage } from './list';
 import { optionNotes } from '../data/option-notes';
 import { TailSpin } from 'react-loader-spinner';
 import { useOrderStore } from '../state/orderStore';
 import { WOOD_SWATCHES, WAX_SWATCHES } from '../data/options';  
 
+let firstRenderPosted = false;
+
+const slugify = (value: string) =>
+  (value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '_')
+    .replace(/[^a-z0-9_-]/g, '');
+
+const titleize = (slug: string) =>
+  slug
+    .replace(/[^a-z0-9_-]/gi, ' ')
+    .split(/[\s_-]+/)
+    .filter(Boolean)
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+
+const formatList = (items: string[]) => {
+  if (!items.length) return '';
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(', ')}, and ${items[items.length - 1]}`;
+};
+
+const syntheticIdFromSlug = (slug: string) => {
+  let hash = 0;
+  for (let i = 0; i < slug.length; i += 1) {
+    hash = ((hash << 5) - hash) + slug.charCodeAt(i);
+    hash |= 0;
+  }
+  const normalized = Math.abs(hash) || 1;
+  return -normalized;
+};
+
+const buildSyntheticBottle = (slug: string) => {
+  if (!slug) return null;
+  return {
+    slug,
+    mini: {
+      id: syntheticIdFromSlug(slug),
+      guid: `synthetic-${slug}`,
+      name: titleize(slug),
+      selected: true,
+    },
+    option: null,
+  };
+};
+
+const slugFromOption = (option: any) => {
+  if (!option) return '';
+  const code = typeof option?.code === 'string' ? option.code : '';
+  if (code) {
+    const normalized = slugify(code.split('|').pop() || code);
+    if (normalized) return normalized;
+  }
+  return slugify(option?.name || '');
+};
+
+const toMini = (o: any) =>
+  o ? ({ id: o.id, guid: o.guid, name: o.name, selected: !!o.selected }) : null;
 
 const Selector: FunctionComponent<{}> = () => {
     const {
@@ -39,91 +99,245 @@ const Selector: FunctionComponent<{}> = () => {
     console.log("price", price)
     console.log("isSceneLoading", isSceneLoading)
     
+    const allowedParentOrigins = useMemo(() => {
+      const envList = (process.env.REACT_APP_PARENT_ORIGINS || '')
+        .split(',')
+        .map(origin => origin.trim())
+        .filter(Boolean);
+      const globalList =
+        typeof window !== 'undefined' && Array.isArray((window as any).__ZAKEKE_PARENT_ORIGINS)
+          ? ((window as any).__ZAKEKE_PARENT_ORIGINS as string[])
+          : [];
+      const normalizedGlobal = globalList
+        .map(origin => origin.trim())
+        .filter(Boolean);
+      return Array.from(new Set([...envList, ...normalizedGlobal]));
+    }, []);
 
-    const buildGroup = groups.find(g => g.name === "Build Your Bottle") ?? null;
+    const {
+      order: storedOrder,
+      setFromSelections,
+      labelDesigns,
+      setFromUploadDesign,
+      closureChoices,
+      setClosureWood,
+      setClosureWax,
+    } = useOrderStore((state) => ({
+      order: state.order,
+      setFromSelections: state.setFromSelections,
+      labelDesigns: state.labelDesigns,
+      setFromUploadDesign: state.setFromUploadDesign,
+      closureChoices: state.closureChoices,
+      setClosureWood: state.setClosureWood,
+      setClosureWax: state.setClosureWax,
+    }));
 
-    const steps = useMemo(() => buildGroup?.steps ?? [], [buildGroup]);
+    const primaryGroup = useMemo(() => {
+      if (!Array.isArray(groups)) return null;
+      const withSteps = groups.find(g => Array.isArray(g?.steps) && g.steps.length > 0);
+      return withSteps ?? null;
+    }, [groups]);
 
-  
-    const findStepIndex = (needle: string, fallbackIndex: number) => {
-      const i = steps.findIndex(s => s.name?.toLowerCase().includes(needle));
-      return i >= 0 ? i : fallbackIndex;
-    };
+    const steps = useMemo(() => primaryGroup?.steps ?? [], [primaryGroup]);
 
-    const bottleStepIdx = findStepIndex('bottle', 0);
-    const liquidStepIdx = findStepIndex('gin', 1);
-    const closureStepIdx = findStepIndex('closure', 2);
-    const labelStepIdx  = findStepIndex('label', 3);
+    type StepRole = 'bottle' | 'liquid' | 'closure' | 'label' | 'unknown';
 
-    const bottleOptions = steps[bottleStepIdx]?.attributes?.[0]?.options ?? [];
-    const bottleIdx = bottleOptions.findIndex(o => o.selected);
-    const bottleSel = bottleIdx >= 0 ? bottleOptions[bottleIdx] : null;
-    console.log("bottleSel", bottleSel);
+    const bottleNameSet = useMemo(() => new Set(
+      Object.keys(optionNotes.bottles || {}).map(name => name.trim().toLowerCase())
+    ), []);
+    const liquidNameSet = useMemo(() => new Set(
+      Object.keys(optionNotes.liquids || {}).map(name => name.trim().toLowerCase())
+    ), []);
+    const closureNameSet = useMemo(() => {
+      const base = [
+        ...Object.keys(optionNotes.closures || {}),
+        ...WOOD_SWATCHES.map(s => s.key),
+        ...WAX_SWATCHES.map(s => s.key),
+        'No Wax Seal',
+        'Wooden Closure',
+      ];
+      return new Set(base.map(name => name.trim().toLowerCase()));
+    }, []);
 
-    const pick = (stepIdx: number) => {
-      const step = steps[stepIdx];
-      if (!step) return null;
-
+    const detectStepRole = useCallback((step: any): StepRole => {
+      if (!step) return 'unknown';
       const attrs: any[] = Array.isArray(step.attributes) ? step.attributes : [];
-      const stepName = (step.name || '').toLowerCase();
-      const isLabelStepLocal = stepName.includes('label') || stepName.includes('design');
+      if (!attrs.length) return 'unknown';
 
-      // --- Label/Design step: SINGLE attribute shared across bottles ---
-      if (isLabelStepLocal) {
-        // 1) any selected option across attributes
-        for (const a of attrs) {
-          const sel = (Array.isArray(a?.options) ? a.options : []).find((o: any) => !!o?.selected);
-          if (sel) return sel;
+      const attrNames = attrs
+        .map((a: any) => (a?.name || '').toString().trim().toLowerCase())
+        .filter(Boolean);
+      const options: any[] = attrs.flatMap((a: any) =>
+        Array.isArray(a?.options) ? a.options : []
+      );
+      const optionNames = options
+        .map(o => (o?.name || '').toString().trim().toLowerCase())
+        .filter(Boolean);
+      const optionCodes = options
+        .map(o => (o?.code || '').toString().trim().toLowerCase())
+        .filter(Boolean);
+
+      if (optionCodes.some(code => code.includes('_label_')) ||
+          attrNames.some(name => name.includes('label') || name.includes('design'))) {
+        return 'label';
+      }
+
+      const closureKeywordHit = optionNames.some(name =>
+        closureNameSet.has(name) || name.includes('wax') || name.includes('wood')
+      ) || attrNames.some(name => name.includes('closure') || name.includes('wax') || name.includes('wood'));
+
+      if (closureKeywordHit) {
+        return 'closure';
+      }
+
+      if (optionNames.some(name => liquidNameSet.has(name) || name.includes('gin') || name.includes('liquid'))) {
+        return 'liquid';
+      }
+
+      if (optionNames.some(name => bottleNameSet.has(name) || name.includes('bottle'))) {
+        return 'bottle';
+      }
+
+      return 'unknown';
+    }, [bottleNameSet, closureNameSet, liquidNameSet]);
+
+    const stepByRole = useMemo(() => {
+      const map: Record<Exclude<StepRole, 'unknown'>, any | null> = {
+        bottle: null,
+        liquid: null,
+        closure: null,
+        label: null,
+      };
+
+      for (const step of steps) {
+        const role = detectStepRole(step);
+        if (role !== 'unknown' && map[role] == null) {
+          map[role] = step;
         }
-        // 2) explicit "No Selection"
-        for (const a of attrs) {
-          const noSel = (Array.isArray(a?.options) ? a.options : []).find((o: any) => (o?.name || '').trim().toLowerCase() === 'no selection');
-          if (noSel) return noSel;
-        }
-        // 3) fallback to first enabled attribute's first option (or first available)
-        const firstEnabledAttr = attrs.find(a => !!a?.enabled) || attrs[0] || null;
-        const firstOpt = (Array.isArray(firstEnabledAttr?.options) ? firstEnabledAttr.options : [])[0] || null;
-        return firstOpt || null;
       }
 
-      // --- Closure step: prefer enabled attribute, else bottle-index attr, else first ---
-      if (stepIdx === closureStepIdx) {
-        const attr = attrs.find(a => !!a?.enabled) || (bottleIdx >= 0 ? attrs[bottleIdx] : null) || attrs[0] || null;
-        const opts: any[] = Array.isArray(attr?.options) ? attr!.options : [];
-        return opts.find(o => o?.selected) || null;
+      return map;
+    }, [steps, detectStepRole]);
+
+    const bottleStep = stepByRole.bottle;
+    const liquidStep = stepByRole.liquid;
+    const closureStep = stepByRole.closure;
+    const labelStep = stepByRole.label;
+
+    const bottleStepId = bottleStep?.id ?? null;
+    const liquidStepId = liquidStep?.id ?? null;
+    const closureStepId = closureStep?.id ?? null;
+    const labelStepId = labelStep?.id ?? null;
+
+    const findSelectedOption = (step: any | null) => {
+      if (!step) return null;
+      const attrs: any[] = Array.isArray(step.attributes) ? step.attributes : [];
+      for (const attr of attrs) {
+        const options: any[] = Array.isArray(attr?.options) ? attr.options : [];
+        const hit = options.find((o: any) => !!o?.selected);
+        if (hit) return hit;
       }
-
-      // --- Default (Bottle/Liquid/etc): bottle-index mapping with safety net ---
-      const attrByBottleIndex = (typeof bottleIdx === 'number' && bottleIdx >= 0) ? attrs[bottleIdx] : undefined;
-      const selectedViaIndex = Array.isArray(attrByBottleIndex?.options)
-        ? attrByBottleIndex.options.find((o: any) => !!o?.selected) || null
-        : null;
-      if (selectedViaIndex) return selectedViaIndex;
-
-      // Safety net: any selected across attributes
-      for (const a of attrs) {
-        const sel = (Array.isArray(a?.options) ? a.options : []).find((o: any) => !!o?.selected);
-        if (sel) return sel;
-      }
-
       return null;
     };
 
-    const liquidSel  = pick(liquidStepIdx);
-    const closureSel = pick(closureStepIdx);
-    const labelSel   = pick(labelStepIdx);
+    const bottleSel = findSelectedOption(bottleStep);
+    console.log("bottleSel", bottleSel);
+
+    const bottleSlugFromSelection = useMemo(
+      () => slugFromOption(bottleSel),
+      [bottleSel]
+    );
+
+    const storedBottle = useMemo(() => {
+      const bottle = storedOrder?.bottle;
+      if (!bottle?.name || bottle.name.trim().toLowerCase() === 'no selection') return null;
+      const slug = slugify(bottle.name);
+      if (!slug) return null;
+      return {
+        slug,
+        mini: {
+          id: bottle.id,
+          guid: bottle.guid,
+          name: bottle.name,
+          selected: bottle.selected ?? true,
+        },
+        option: null,
+      };
+    }, [storedOrder?.bottle]);
+
+    const areaBottle = useMemo(() => {
+      const areas = Array.isArray(product?.areas) ? product!.areas : [];
+      const match = areas.find(a =>
+        /_label_(front|back)/i.test((a?.name || '').toLowerCase())
+      );
+      if (!match?.name) return null;
+      const base = match.name.replace(/_label_(front|back).*$/i, '');
+      const slug = slugify(base);
+      if (!slug) return null;
+      return buildSyntheticBottle(slug);
+    }, [product]);
+
+    const resolvedBottle = useMemo(() => {
+      if (bottleSel) {
+        const slug =
+          bottleSlugFromSelection ||
+          storedBottle?.slug ||
+          areaBottle?.slug ||
+          '';
+        return {
+          slug,
+          mini: toMini(bottleSel),
+          option: bottleSel,
+        };
+      }
+      if (storedBottle) return storedBottle;
+      if (areaBottle) return areaBottle;
+      return { slug: '', mini: null, option: null };
+    }, [bottleSel, bottleSlugFromSelection, storedBottle, areaBottle]);
+
+    const fallbackOption = (step: any | null, preferEnabled = true) => {
+      if (!step) return null;
+      const attrs: any[] = Array.isArray(step.attributes) ? step.attributes : [];
+      const attr = (preferEnabled ? attrs.find(a => !!a?.enabled) : null) || attrs[0] || null;
+      const opts: any[] = Array.isArray(attr?.options) ? attr!.options : [];
+      return opts[0] || null;
+    };
+
+    const pickFromStep = (step: any | null, role: StepRole) => {
+      if (!step) return null;
+      const selected = findSelectedOption(step);
+      if (selected) return selected;
+
+      const attrs: any[] = Array.isArray(step.attributes) ? step.attributes : [];
+      const allOptions: any[] = attrs.flatMap((attr: any) =>
+        Array.isArray(attr?.options) ? attr.options : []
+      );
+
+      if (role === 'label') {
+        const noSel = allOptions.find(
+          (o: any) => (o?.name || '').trim().toLowerCase() === 'no selection'
+        );
+        if (noSel) return noSel;
+      }
+
+      return fallbackOption(step, true);
+    };
+
+    const liquidSel  = pickFromStep(liquidStep, 'liquid');
+    const closureSel = pickFromStep(closureStep, 'closure');
+    const labelSel   = pickFromStep(labelStep, 'label');
 
     console.log("liquidSel", liquidSel);
     console.log("closureSel", closureSel);
     console.log("labelSel", labelSel);
 
+    const bottleSlug = resolvedBottle.slug;
+    const hasBottleStep = !!bottleStep;
+
     // Notify parent once when the configurator finishes first render/load
     const seenTrue   = useRef(false);
     const prev       = useRef(isSceneLoading);
     const postedOnce = useRef(false); // per-mount guard
-
-    // optional (prevents double post in React 18 StrictMode dev)
-    let modulePosted = false; // module-scope (file-level), not on window
 
     useEffect(() => {
       // record if we've *ever* seen true
@@ -136,10 +350,10 @@ const Selector: FunctionComponent<{}> = () => {
         becameFalse &&
         seenTrue.current &&
         !postedOnce.current &&
-        !modulePosted
+        !firstRenderPosted
       ) {
         postedOnce.current = true;
-        modulePosted = true; // avoid double post across dev remounts
+        firstRenderPosted = true; // avoid double post across dev remounts
 
         try {
           window.parent?.postMessage(
@@ -164,10 +378,40 @@ const Selector: FunctionComponent<{}> = () => {
     const selectedGroup = groups.find(group => group.id === selectedGroupId);
     const selectedStep = selectedGroup?.steps.find(step => step.id === selectedStepId) ?? null;
 
+    const selectedStepRole = useMemo<StepRole>(() => {
+      if (!selectedStep) return 'unknown';
+      const id = selectedStep.id;
+      if (id === bottleStepId) return 'bottle';
+      if (id === liquidStepId) return 'liquid';
+      if (id === closureStepId) return 'closure';
+      if (id === labelStepId) return 'label';
+      return 'unknown';
+    }, [selectedStep, bottleStepId, liquidStepId, closureStepId, labelStepId]);
+
+    const notesCategory = useMemo(() => {
+      if (selectedStepRole === 'bottle') return 'bottles' as const;
+      if (selectedStepRole === 'liquid') return 'liquids' as const;
+      if (selectedStepRole === 'closure') return 'closures' as const;
+      return null;
+    }, [selectedStepRole]);
+
+    const notesTitle = useMemo(() => {
+      switch (notesCategory) {
+        case 'bottles':
+          return 'Bottle Style';
+        case 'liquids':
+          return 'Tasting Notes';
+        case 'closures':
+          return 'Closure';
+        default:
+          return 'Notes';
+      }
+    }, [notesCategory]);
+
     // Ensure the single label attribute follows the selected bottle
     // BUT only when we are on the Label/Design step. Otherwise keep labels hidden via "No Selection".
     useEffect(() => {
-      const step = steps[labelStepIdx];
+      const step = labelStep;
       if (!step) return;
 
       const attrs: any[] = Array.isArray(step.attributes) ? step.attributes : [];
@@ -179,7 +423,9 @@ const Selector: FunctionComponent<{}> = () => {
 
       const noSel = opts.find(o => (o?.name || '').trim().toLowerCase() === 'no selection') || null;
 
-      const isLabelStep = /label|design/i.test(selectedStep?.name || '');
+      const isLabelStep =
+        (selectedStep?.id != null && selectedStep?.id === labelStepId) ||
+        selectedStepRole === 'label';
 
       // If we're NOT on the label step, force "No Selection" so labels stay hidden
       if (!isLabelStep) {
@@ -191,15 +437,20 @@ const Selector: FunctionComponent<{}> = () => {
       }
 
       // We ARE on the label step → map bottle -> specific label option by code suffix
-      const bottleName = (bottleSel?.name || '').trim().toLowerCase();
-      const bottleKey = bottleName.replace(/\s+/g, '_'); // e.g. 'Polo' -> 'polo'
+      const bottleKey = bottleSlug;
 
       if (!bottleKey) {
         if (noSel && !noSel.selected) selectOption(noSel.id);
         return;
       }
 
-      const match = opts.find(o => typeof o?.code === 'string' && o.code.toLowerCase().endsWith(`_${bottleKey}`));
+      const match = opts.find(o => {
+        const code = typeof o?.code === 'string' ? o.code.toLowerCase() : '';
+        const nameSlug = slugify(o?.name || '');
+        if (code.endsWith(`_${bottleKey}`)) return true;
+        if (code.includes(`${bottleKey}_label`)) return true;
+        return nameSlug === bottleKey;
+      });
 
       if (match && !match.selected) {
         selectOption(match.id);
@@ -209,12 +460,10 @@ const Selector: FunctionComponent<{}> = () => {
       if (!match && noSel && !noSel.selected) {
         selectOption(noSel.id);
       }
-    }, [steps, labelStepIdx, selectedStepId, selectedStep?.name, bottleSel?.name, selectOption]);
-
-    const toMini = (o: any) => (o ? ({ id: o.id, guid: o.guid, name: o.name, selected: !!o.selected }) : null);
+    }, [labelStep, labelStepId, selectedStepId, selectedStep?.id, selectedStepRole, bottleSlug, selectOption]);
 
     // Keep "No Selection" visible in minis
-    const miniBottle  = toMini(bottleSel);
+    const miniBottle  = resolvedBottle.mini;
     const miniLiquid  = toMini(liquidSel);
     const miniClosure = toMini(closureSel);
     const miniLabel   = toMini(labelSel);
@@ -223,16 +472,6 @@ const Selector: FunctionComponent<{}> = () => {
     console.log("miniLiquid", miniLiquid);
     console.log("miniClosure", miniClosure);
     console.log("miniLabel", miniLabel);
-
-    const {
-      setFromSelections,
-      labelDesigns,
-      setFromUploadDesign,
-      closureChoices,
-      setClosureWood,
-      setClosureWax
-    } = useOrderStore();
-
 
     const selections = useMemo(() => ({
       bottleSel,
@@ -288,22 +527,26 @@ const Selector: FunctionComponent<{}> = () => {
         sku: product?.sku ?? null,
         price,
       });
-    }, [orderKey]);
+    }, [orderKey, setFromSelections, selections, product?.sku, price]);
+
+    const hasBottleSelection = !!miniBottle && miniBottle.name !== 'No Selection';
+    const hasLiquidSelection = !!miniLiquid && miniLiquid.name !== 'No Selection';
+    const hasClosureSelection = !!miniClosure && miniClosure.name !== 'No Selection';
 
     const productObject = useMemo(() => {
-      const bottleName = selections.bottleSel?.name?.toLowerCase() || '';
-      const frontMeshId = bottleName ? getMeshIDbyName(`${bottleName}_label_front`) : null;
-      const backMeshId  = bottleName ? getMeshIDbyName(`${bottleName}_label_back`)  : null;
+      const slug = bottleSlug || slugFromOption(selections.bottleSel);
+      const frontMeshId = slug ? getMeshIDbyName(`${slug}_label_front`) : null;
+      const backMeshId  = slug ? getMeshIDbyName(`${slug}_label_back`)  : null;
 
-      const valid = !!(
-        miniBottle && miniLiquid && miniClosure &&
-        miniLiquid.name !== 'No Selection' &&
-        miniClosure.name !== 'No Selection'
-      );
+      const valid =
+        hasLiquidSelection &&
+        hasClosureSelection &&
+        (!hasBottleStep || hasBottleSelection);
 
       return {
         sku: product?.sku ?? null,
         price,
+        bottleSlug: slug,
         selections: {
           bottle: selections.bottle,
           liquid: selections.liquid,
@@ -317,7 +560,32 @@ const Selector: FunctionComponent<{}> = () => {
         mesh: { frontMeshId, backMeshId },
         valid,
       } as const;
-    }, [price, product?.sku, selections, getMeshIDbyName, labelDesigns, miniBottle, miniClosure, miniLiquid]);
+    }, [
+      price,
+      product?.sku,
+      selections,
+      getMeshIDbyName,
+      labelDesigns,
+      bottleSlug,
+      hasBottleSelection,
+      hasBottleStep,
+      hasClosureSelection,
+      hasLiquidSelection,
+    ]);
+
+    const findLabelArea = useCallback(
+      (side: 'front' | 'back') => {
+        const areas = Array.isArray(product?.areas) ? product!.areas : [];
+        const slug = (productObject.bottleSlug || bottleSlug || '').toLowerCase();
+        const lowerSide = side.toLowerCase();
+        const exact = slug
+          ? areas.find(a => (a?.name || '').toLowerCase() === `${slug}_label_${lowerSide}`)
+          : null;
+        if (exact) return exact;
+        return areas.find(a => (a?.name || '').toLowerCase().endsWith(`_label_${lowerSide}`)) || null;
+      },
+      [product, productObject.bottleSlug, bottleSlug]
+    );
 
     const visibleAreas = useMemo(() => {
       const areas = product?.areas ?? [];
@@ -348,13 +616,26 @@ const Selector: FunctionComponent<{}> = () => {
       console.warn('[Configurator warning]', msg);
     };
 
-    // A user can "design" only when required selections are made and not "No Selection"
-    const canDesign = !!(miniBottle && miniLiquid && miniClosure) &&
-      miniBottle.name !== 'No Selection' &&
-      miniLiquid.name !== 'No Selection' &&
-      miniClosure.name !== 'No Selection';
+    const canDesign =
+      hasLiquidSelection &&
+      hasClosureSelection &&
+      (!hasBottleStep || hasBottleSelection);
 
+    const missingSelections = useCallback(() => {
+      const missing: string[] = [];
+      if (hasBottleStep && !hasBottleSelection) missing.push('bottle');
+      if (!hasLiquidSelection) missing.push('liquid');
+      if (!hasClosureSelection) missing.push('closure');
+      return missing;
+    }, [hasBottleStep, hasBottleSelection, hasLiquidSelection, hasClosureSelection]);
 
+    const warnMissingSelections = useCallback((suffix = '.') => {
+      const missing = missingSelections();
+      if (!missing.length) return;
+      const list = formatList(missing);
+      const message = suffix ? `Please select ${list}${suffix}` : `Please select ${list}.`;
+      setWarning(message.replace(/\.{2,}$/, '.'));
+    }, [missingSelections]);
 
     // Initialize group/step/attribute once groups are available
     useEffect(() => {
@@ -384,6 +665,21 @@ const Selector: FunctionComponent<{}> = () => {
     const attributes = useMemo(() => (selectedStep || selectedGroup)?.attributes ?? [], [selectedGroup, selectedStep]);
     const selectedAttribute = attributes.find(attribute => attribute.id === selectedAttributeId);
 
+    const stepsRef = useRef<any[]>(steps);
+    useEffect(() => {
+      stepsRef.current = steps;
+    }, [steps]);
+
+    const selectedAttributeIdRef = useRef<number | null>(selectedAttributeId);
+    useEffect(() => {
+      selectedAttributeIdRef.current = selectedAttributeId;
+    }, [selectedAttributeId]);
+
+    const selectedStepIdRef = useRef<number | null>(selectedStepId);
+    useEffect(() => {
+      selectedStepIdRef.current = selectedStepId;
+    }, [selectedStepId]);
+
     // When step changes, ensure an attribute is selected
     useEffect(() => {
       if (!selectedStep && !selectedGroup) return;
@@ -394,24 +690,33 @@ const Selector: FunctionComponent<{}> = () => {
         selectAttribute(firstEnabledAttr.id);
       }
     }, [selectedStep, selectedGroup, selectedAttributeId, attributes]);
-
-
-    useEffect(() => {
-      const { mesh } = productObject;
-      // console.log('frontMeshId', mesh.frontMeshId);
-      // console.log('backMeshId', mesh.backMeshId);
-    }, [productObject]);
-
-
     useEffect(() => {
       const onMsg = async (e: MessageEvent) => {
-        if (e.data?.customMessageType === 'uploadDesign') {
-          console.log("Received uploadDesign message:", e.data.message);
+        const origin = e.origin || '';
+        const originAllowed = (() => {
+          if (!origin) return false;
+          if (allowedParentOrigins.length) {
+            return allowedParentOrigins.includes(origin);
+          }
+          if (typeof window === 'undefined') return false;
+          return origin === window.location.origin || origin === 'null';
+        })();
 
-          const { designExport, designSide } = e.data.message || {};
+        if (!originAllowed) {
+          console.warn('[Configurator] Ignoring message from untrusted origin', origin);
+          return;
+        }
+
+        const payload = e.data;
+        if (!payload || typeof payload !== 'object') return;
+
+        if (payload.customMessageType === 'uploadDesign') {
+          console.log("Received uploadDesign message:", payload.message);
+
+          const { designExport, designSide } = payload.message || {};
           console.log("designExport", designExport)
           console.log("designSide", designSide)
-          const parentOrder = e.data.message?.order;
+          const parentOrder = payload.message?.order;
           if (designSide) {
             // Persist to zustand so UI flips to "Edit [side] label" and save gating can use it
             setFromUploadDesign({
@@ -428,12 +733,9 @@ const Selector: FunctionComponent<{}> = () => {
 
           if (!designSide ) return;
 
-          const bottleName = productObject?.selections?.bottle?.name?.toLowerCase() ?? '';
-          const areaName = `${bottleName}_label_${designSide}`;
-
-          const area = product?.areas?.find(a => a.name === areaName);
-          if (!area) {
-            console.warn('No area found', { areaName });
+          const targetArea = findLabelArea(designSide);
+          if (!targetArea) {
+            console.warn('No area found', { designSide, bottleSlug: productObject?.bottleSlug ?? null });
             return;
           }
 
@@ -443,7 +745,7 @@ const Selector: FunctionComponent<{}> = () => {
             // const frontMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_front`);
             // console.log("frontMeshId", frontMeshId);
 
-            const frontAreaId = product?.areas.find(a => a.name === productObject?.selections?.bottle?.name.toLowerCase() + '_label_front')?.id;
+            const frontAreaId = targetArea.id;
             // console.log("frontAreaId", frontAreaId);
             
             if (frontImage?.imageID && frontAreaId) {
@@ -489,7 +791,7 @@ const Selector: FunctionComponent<{}> = () => {
             // const backMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_back`);
             // console.log("backMeshId", backMeshId);
   
-            const backAreaId = product?.areas.find(a => a.name === productObject?.selections?.bottle?.name.toLowerCase() + '_label_back')?.id;
+            const backAreaId = targetArea.id;
   
             // console.log("backAreaId", backAreaId);
   
@@ -533,7 +835,7 @@ const Selector: FunctionComponent<{}> = () => {
       };
       window.addEventListener('message', onMsg);
       return () => window.removeEventListener('message', onMsg);
-    }, [createImageFromUrl, getMeshIDbyName, addItemImage, removeItem, items, productObject?.selections?.bottle?.name, product?.areas, setCameraByName, setFromUploadDesign]);
+    }, [allowedParentOrigins, createImageFromUrl, addItemImage, productObject, product?.sku, setFromUploadDesign, findLabelArea]);
 
 
     // --- Clear items when bottle changes ---
@@ -569,13 +871,12 @@ const Selector: FunctionComponent<{}> = () => {
     // Clear any previously attached label items on first entry to the Label/Design step
     const didClearOnLabelRef = useRef(false);
     useEffect(() => {
-      const name = (selectedStep?.name || '').toLowerCase();
-      const onLabelStepNow = name.includes('label') || name.includes('design');
+      const onLabelStepNow = selectedStep?.id != null && selectedStep?.id === labelStepId;
       if (onLabelStepNow && !didClearOnLabelRef.current) {
         didClearOnLabelRef.current = true;
         clearAllItems();
       }
-    }, [selectedStep?.id, clearAllItems]);
+    }, [selectedStep?.id, labelStepId, clearAllItems]);
 
 
 
@@ -631,7 +932,7 @@ const Selector: FunctionComponent<{}> = () => {
     const isAnimatingCam = useRef(false);
     const prevTourKeyRef = useRef<string | null>(null);
 
-    const waitSceneIdle = async (timeout = 1500, interval = 60) => {
+    const waitSceneIdle = useCallback(async (timeout = 1500, interval = 60) => {
       const start = Date.now();
       let stable = 0;
       while (Date.now() - start < timeout) {
@@ -644,16 +945,16 @@ const Selector: FunctionComponent<{}> = () => {
         await new Promise(r => setTimeout(r, interval));
       }
       await new Promise(r => requestAnimationFrame(() => r(null)));
-    };
+    }, [isSceneLoading]);
 
-    const moveCamera = async (name: string) => {
+    const moveCamera = useCallback(async (name: string) => {
       try {
         await setCameraByName(name);
         lastCamRef.current = name;
       } catch {}
-    };
+    }, [setCameraByName]);
 
-    const runCameraTour = async (frames: string[], final: string, perFrameMs = 600) => {
+    const runCameraTour = useCallback(async (frames: string[], final: string, perFrameMs = 600) => {
       // prevent concurrent tours
       if (isAnimatingCam.current) return;
       isAnimatingCam.current = true;
@@ -680,24 +981,22 @@ const Selector: FunctionComponent<{}> = () => {
         if (camAbort.current === ctrl) camAbort.current = null;
         isAnimatingCam.current = false;
       }
-    };
+    }, [moveCamera]);
 
     // Fire tour on step / bottle change, but debounce identical requests
     useEffect(() => {
       if (!selectedStep) return;
 
-      // current step key
-      const s = (selectedStep.name || '').toLowerCase();
       const stepKey: 'bottle' | 'liquid' | 'closure' | 'label' =
-        s.includes('bottle') ? 'bottle' :
-        s.includes('closure') ? 'closure' :
-        s.includes('liquid')   ? 'liquid'   : 'label';
+        selectedStepRole === 'bottle' ? 'bottle' :
+        selectedStepRole === 'liquid' ? 'liquid' :
+        selectedStepRole === 'closure' ? 'closure' : 'label';
 
       // derive bottle key from current bottle selection (e.g. "Antica" -> "antica")
-      const bottleKey = (bottleSel?.name || selections.bottle?.name || '')
-        .trim()
-        .toLowerCase()
-        .replace(/\s+/g, '_');
+      const bottleKey =
+        productObject.bottleSlug ||
+        bottleSlug ||
+        slugify(selections.bottle?.name || '');
 
       // if no bottle yet, skip anim
       if (!bottleKey) return;
@@ -743,12 +1042,19 @@ const Selector: FunctionComponent<{}> = () => {
 
       return () => camAbort.current?.abort();
     }, [
+      selectedStep,
       selectedStep?.id,
-      selections.bottle?.name,
-      bottleSel?.name,
+      selectedStepRole,
+      productObject.bottleSlug,
+      bottleSlug,
+      labelAreas.front,
       labelAreas.front?.id,
+      labelAreas.back,
       labelAreas.back?.id,
-      isSceneLoading
+      isSceneLoading,
+      runCameraTour,
+      waitSceneIdle,
+      selections.bottle?.name
     ]);
 
     // --- Helper: find an option by exact name across ALL attributes in the current step ---
@@ -796,6 +1102,28 @@ const Selector: FunctionComponent<{}> = () => {
         tick();
       });
 
+    const closureStepIdRef = useRef<number | null>(closureStepId);
+    useEffect(() => {
+      closureStepIdRef.current = closureStepId;
+    }, [closureStepId]);
+
+    const selectedOptionForNotes = useMemo(() => {
+      if (!selectedAttribute) return null;
+      const opts = Array.isArray((selectedAttribute as any).options) ? (selectedAttribute as any).options : [];
+      return opts.find((opt: any) => opt?.selected && opt?.name !== 'No Selection') || null;
+    }, [selectedAttribute]);
+
+    const findStepById = useCallback((id: number | null) => {
+      if (id == null) return null;
+      const latestSteps = stepsRef.current;
+      return latestSteps.find(step => step?.id === id) || null;
+    }, []);
+
+    const latestSelectionForStep = useCallback((id: number | null) => {
+      const step = findStepById(id);
+      return step ? findSelectedOption(step) : null;
+    }, [findStepById]);
+
     // --- Helper: ensure atomic update for closure selection ---
     const selectOptionOnAttribute = async (
       attributeId: number | null,
@@ -810,25 +1138,23 @@ const Selector: FunctionComponent<{}> = () => {
         if (!Number.isFinite(attrId) || !Number.isFinite(optId)) return;
 
         // Ensure we're on the Closure step (defensive)
-        const isClosure = /closure/i.test(selectedStep?.name || '');
-        if (!isClosure) {
-          const closureStep = selectedGroup?.steps?.find(s => /closure/i.test(s?.name || ''));
-          if (closureStep) {
-            selectStep(closureStep.id);
-            await waitFor(() => selectedStepId === closureStep.id, 2000, 40);
-          }
+        if (closureStepId != null && selectedStepIdRef.current !== closureStepId) {
+          selectStep(closureStepId);
+          await waitFor(() => selectedStepIdRef.current === closureStepId, 2000, 40);
         }
 
-        if (selectedAttributeId !== attrId) {
+        if (selectedAttributeIdRef.current !== attrId) {
           selectAttribute(attrId);
-          await waitFor(() => selectedAttributeId === attrId, 2000, 40);
+          await waitFor(() => selectedAttributeIdRef.current === attrId, 2000, 40);
         }
 
         // Select the option and confirm
         selectOption(optId);
         const ok = await waitFor(() => {
-          const activeAttr = attributes.find(a => a.id === (selectedAttributeId ?? -1));
-          const opts = activeAttr?.options || [];
+          const step = findStepById(closureStepIdRef.current);
+          const attrs: any[] = Array.isArray(step?.attributes) ? step!.attributes : [];
+          const activeAttr = attrs.find((a: any) => a?.id === attrId) || null;
+          const opts: any[] = Array.isArray(activeAttr?.options) ? activeAttr!.options : [];
           return !!opts.find(o => o.id === optId && o.selected);
         }, 1500, 40);
 
@@ -836,37 +1162,34 @@ const Selector: FunctionComponent<{}> = () => {
           await new Promise(r => setTimeout(r, 60));
           selectOption(optId);
           await waitFor(() => {
-            const activeAttr = attributes.find(a => a.id === (selectedAttributeId ?? -1));
-            const opts = activeAttr?.options || [];
+            const step = findStepById(closureStepIdRef.current);
+            const attrs: any[] = Array.isArray(step?.attributes) ? step!.attributes : [];
+            const activeAttr = attrs.find((a: any) => a?.id === attrId) || null;
+            const opts: any[] = Array.isArray(activeAttr?.options) ? activeAttr!.options : [];
             return !!opts.find(o => o.id === optId && o.selected);
           }, 2000, 40);
         }
 
         // === Atomic commit to store ===
-        const step = steps[closureStepIdx];
-        let attr = Array.isArray(step?.attributes) ? step!.attributes.find((a: any) => !!a?.enabled) : null;
-        if (!attr && selectedAttributeId != null) {
-          attr = step?.attributes?.find((a: any) => a?.id === selectedAttributeId) || null;
-        }
-        if (!attr) {
-          const attrs: any[] = Array.isArray(step?.attributes) ? step!.attributes : [];
-          attr = (bottleIdx >= 0 ? attrs[bottleIdx] : null) || attrs[0] || null;
-        }
-        const latestClosureSel = Array.isArray(attr?.options) ? attr!.options.find((o: any) => !!o?.selected) || null : null;
+        const latestClosureSel = latestSelectionForStep(closureStepId);
+        const latestBottleSel = latestSelectionForStep(bottleStepId);
+        const latestLiquidSel = latestSelectionForStep(liquidStepId);
+        const latestLabelSel  = latestSelectionForStep(labelStepId);
 
-        const latestBottleSel = bottleSel;
-        const latestLiquidSel = liquidSel;
-        const latestLabelSel  = labelSel;
+        const latestBottleMini = latestBottleSel ? toMini(latestBottleSel) : miniBottle;
+        const latestLiquidMini = latestLiquidSel ? toMini(latestLiquidSel) : miniLiquid;
+        const latestClosureMini = latestClosureSel ? toMini(latestClosureSel) : miniClosure;
+        const latestLabelMini = latestLabelSel ? toMini(latestLabelSel) : miniLabel;
 
         const latestSelections = {
           bottleSel: latestBottleSel,
           liquidSel: latestLiquidSel,
           closureSel: latestClosureSel,
           labelSel: latestLabelSel,
-          bottle: latestBottleSel ? { id: latestBottleSel.id, guid: latestBottleSel.guid, name: latestBottleSel.name, selected: !!latestBottleSel.selected } : null,
-          liquid: latestLiquidSel ? { id: latestLiquidSel.id, guid: latestLiquidSel.guid, name: latestLiquidSel.name, selected: !!latestLiquidSel.selected } : null,
-          closure: latestClosureSel ? { id: latestClosureSel.id, guid: latestClosureSel.guid, name: latestClosureSel.name, selected: !!latestClosureSel.selected } : null,
-          label: latestLabelSel ? { id: latestLabelSel.id, guid: latestLabelSel.guid, name: latestLabelSel.name, selected: !!latestLabelSel.selected } : null,
+          bottle: latestBottleMini,
+          liquid: latestLiquidMini,
+          closure: latestClosureMini,
+          label: latestLabelMini,
         } as const;
 
         setFromSelections({ selections: latestSelections as any, sku: product?.sku ?? null, price });
@@ -897,32 +1220,17 @@ const Selector: FunctionComponent<{}> = () => {
     };
 
 
-    const onLabelStep =
-      (selectedStep?.name || '').toLowerCase().includes('design') ||
-      (selectedStep?.name || '').toLowerCase().includes('label');
+    const onLabelStep = selectedStepRole === 'label';
 
 
     const frontVisible = !!labelAreas.front;
     const backVisible  = !!labelAreas.back;
 
     // Step validation helpers
-    const stepNameLc = (selectedStep?.name || '').toLowerCase();
-    const isBottleStep  = stepNameLc.includes('bottle');
-    const isLiquidStep  = stepNameLc.includes('gin') || stepNameLc.includes('liquid');
-    const isClosureStep = stepNameLc.includes('closure');
+    const isBottleStep  = selectedStepRole === 'bottle';
+    const isLiquidStep  = selectedStepRole === 'liquid';
+    const isClosureStep = selectedStepRole === 'closure';
     const hasValidSelection = !!(selectedAttribute?.options?.some(o => o.selected && o.name !== 'No Selection'));
-
-    // Closure options can live on step or attribute depending on Zakeke setup
-    const closureOptions = useMemo(() => {
-      const stepOpts = (isClosureStep && selectedStep && Array.isArray((selectedStep as any).options))
-        ? ((selectedStep as any).options as any[])
-        : [];
-      const attrOpts = (selectedAttribute && Array.isArray((selectedAttribute as any).options))
-        ? ((selectedAttribute as any).options as any[])
-        : [];
-      // Prefer step-level options when present
-      return stepOpts.length ? stepOpts : attrOpts;
-    }, [isClosureStep, selectedStep, selectedAttribute]);
 
     // const getOptionIdByName = (name: string) => {
     //   const needle = (name || '').trim().toLowerCase();
@@ -932,7 +1240,7 @@ const Selector: FunctionComponent<{}> = () => {
 
     const handleLabelClick = (side: 'front' | 'back') => {
       if (!canDesign) {
-        setWarning('Please select a bottle, liquid, and closure before designing labels.');
+        warnMissingSelections(' before designing labels.');
         return;
       }
       const hasDesign = side === 'front' ? !!labelDesigns.front : !!labelDesigns.back;
@@ -1070,7 +1378,7 @@ const Selector: FunctionComponent<{}> = () => {
                     const nextStep = selectedGroup.steps[i + 1];
                     const isLabelish = /label|design/i.test(nextStep?.name || '');
                     if (isLabelish && !canDesign) {
-                      setWarning('Please select a bottle, liquid, and closure (not "No Selection") before designing labels.');
+                      warnMissingSelections(' (not "No Selection") before designing labels.');
                       return;
                     }
                     selectStep(nextStep.id);
@@ -1114,7 +1422,7 @@ const Selector: FunctionComponent<{}> = () => {
                       >
                         <OptionText>
                           <OptionTitle $selected={!!option.selected}>{option.name}</OptionTitle>
-                          {selectedStep?.name === 'Select your Gin' && option.description && (
+                          {selectedStepRole === 'liquid' && option.description && (
                             <OptionDescription>{option.description}</OptionDescription>
                           )}
                         </OptionText>
@@ -1214,44 +1522,11 @@ const Selector: FunctionComponent<{}> = () => {
               </>
             )}
 
-            {(() => {
-              const stepName = (selectedStep?.name || '').toLowerCase();
-              const notesAllowed = /bottle|gin|liquid/.test(stepName);
-              return notesAllowed && selectedStep?.name && selectedAttribute && selectedAttribute.options.find(opt => opt.selected && opt.name !== "No Selection");
-            })() && (
+            {notesCategory && selectedOptionForNotes && (
               <NotesWrapper>
-                <strong>
-                  {(() => {
-                    const stepName = (selectedStep?.name || '').toLowerCase();
-
-                    if (stepName.includes('bottle')) return 'Bottle Style';
-                    if (
-                      stepName.includes('gin') || 
-                      stepName.includes('vodka') ||
-                      stepName.includes('whiskey') ||
-                      stepName.includes('rum')
-                    ) return 'Tasting Notes';
-                    if (stepName.includes('closure')) return 'Closure';
-
-                    return 'Notes';
-                  })()}
-                </strong>
+                <strong>{notesTitle}</strong>
                 <p>
-                  {(() => {
-                    const selectedOption = selectedAttribute?.options?.find(opt => opt.selected) || null;
-                    if (!selectedOption) return 'Select an option to see notes.';
-
-                    const stepName = (selectedStep?.name || '').toLowerCase();
-                    const category =
-                      stepName.includes('bottle') ? 'bottles' :
-                        stepName.includes('gin') || stepName.includes('liquid') ? 'liquids' :
-                          stepName.includes('closure') ? 'closures' :
-                            null as 'bottles' | 'liquids' | 'closures' | null;
-
-                    if (!category || !(optionNotes as any)[category]) return null;
-
-                    return ((optionNotes as any)[category][selectedOption.name]) || '';
-                  })()}
+                  {(optionNotes as any)[notesCategory]?.[selectedOptionForNotes.name] || ''}
                 </p>
               </NotesWrapper>
             )}
