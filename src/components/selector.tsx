@@ -1,7 +1,7 @@
 import React, { FunctionComponent, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 // import styled from 'styled-components';
 import { useZakeke } from 'zakeke-configurator-react';
-import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, LabelGrid, LabelCard, LabelCardTitle, ActionsCenter, ConfigWarning, ViewportSpacer } from './list';
+import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, ActionsCenter, ConfigWarning, ViewportSpacer } from './list';
 // import { List, StepListItem, , ListItemImage } from './list';
 import { optionNotes } from '../data/option-notes';
 import { TailSpin } from 'react-loader-spinner';
@@ -207,7 +207,7 @@ const Selector: FunctionComponent<{}> = () => {
     const bottleStep = stepByRole.bottle;
     const liquidStep = stepByRole.liquid;
     const closureStep = stepByRole.closure;
-    const labelStep = stepByRole.label;
+    const labelStep = stepByRole.label ?? (steps.length ? steps[steps.length - 1] : null);
 
     const bottleStepId = bottleStep?.id ?? null;
     const liquidStepId = liquidStep?.id ?? null;
@@ -963,9 +963,38 @@ const Selector: FunctionComponent<{}> = () => {
 
     const onLabelStep = selectedStepRole === 'label';
 
+    const buildSelectionsMessage = useCallback(() => ({
+      order: {
+        bottle: productObject.selections.bottle,
+        liquid: productObject.selections.liquid,
+        closure: productObject.selections.closure,
+        label: productObject.selections.label,
+      },
+      productSku: product?.sku ?? null,
+      price,
+    }), [productObject, product?.sku, price]);
 
-    const frontVisible = !!labelAreas.front;
-    const backVisible  = !!labelAreas.back;
+    const postSelectionsToParent = useCallback((customMessageType: string) => {
+      const message = buildSelectionsMessage();
+      window.parent.postMessage({ customMessageType, message }, '*');
+    }, [buildSelectionsMessage]);
+
+    const handleDesignWithAi = useCallback(() => {
+      if (!canDesign) {
+        warnMissingSelections(' before designing with AI.');
+        return;
+      }
+      postSelectionsToParent('designWithAi');
+    }, [canDesign, postSelectionsToParent, warnMissingSelections]);
+
+    const handleUploadLabels = useCallback(() => {
+      if (!canDesign) {
+        warnMissingSelections(' before uploading labels.');
+        return;
+      }
+      postSelectionsToParent('uploadLabels');
+    }, [canDesign, postSelectionsToParent, warnMissingSelections]);
+
 
     // Step validation helpers
     const isBottleStep  = selectedStepRole === 'bottle';
@@ -978,35 +1007,6 @@ const Selector: FunctionComponent<{}> = () => {
     //   const hit = closureOptions.find(o => (o.name || '').trim().toLowerCase() === needle);
     //   return hit?.id ?? null;
     // };
-
-    const handleLabelClick = (side: 'front' | 'back') => {
-      if (!canDesign) {
-        warnMissingSelections(' before designing labels.');
-        return;
-      }
-      const hasDesign = side === 'front' ? !!labelDesigns.front : !!labelDesigns.back;
-      const designType = hasDesign ? 'edit' : 'design';
-      const designId = side === 'front'
-        ? ((labelDesigns as any)?.front?.id ?? null)
-        : ((labelDesigns as any)?.back?.id  ?? null);
-
-      window.parent.postMessage({
-        customMessageType: 'callDesigner',
-        message: {
-          'order': {
-            'bottle': productObject.selections.bottle,
-            'liquid': productObject.selections.liquid,
-            'closure': productObject.selections.closure,
-            'label': productObject.selections.label,
-          },
-          'designSide': side,
-          'designType': designType,
-          'designId': designId,
-          'productSku': product?.sku ?? null,
-        }
-      }, '*');
-
-    };    
 
     const handleLearnClick = (side?: 'front' | 'back') => {
       window.parent.postMessage({
@@ -1097,8 +1097,6 @@ const Selector: FunctionComponent<{}> = () => {
             )}
 
             {/* Options */}
-            {/* Options (hidden on label step) */}
-            {/* Options / Custom rendering for Closure step */}
             {!onLabelStep && (
               <OptionsWrap>
                 {selectedAttribute?.options
@@ -1124,36 +1122,26 @@ const Selector: FunctionComponent<{}> = () => {
               </OptionsWrap>
             )}
 
-            {onLabelStep && (frontVisible || backVisible) && (
+            {onLabelStep && (
               <>
-                <LabelGrid>
-                  {frontVisible && (
-                    <LabelCard>
-                      <LabelCardTitle>Front Label</LabelCardTitle>
-                      <button
-                        className="configurator-button"
-                        disabled={!canDesign}
-                        title={!canDesign ? 'Select bottle, liquid, and closure first' : undefined}
-                        onClick={() => handleLabelClick('front')}
-                      >
-                        {labelDesigns.front ? 'Edit Front Label' : 'Design Front Label'}
-                      </button>
-                    </LabelCard>
-                  )}
-                  {backVisible && (
-                    <LabelCard>
-                      <LabelCardTitle>Back Label</LabelCardTitle>
-                      <button
-                        className="configurator-button"
-                        disabled={!canDesign}
-                        title={!canDesign ? 'Select bottle, liquid, and closure first' : undefined}
-                        onClick={() => handleLabelClick('back')}
-                      >
-                        {labelDesigns.back ? 'Edit Back Label' : 'Design Back Label'}
-                      </button>
-                    </LabelCard>
-                  )}
-                </LabelGrid>
+                <ActionsCenter>
+                  <button
+                    className="configurator-button"
+                    disabled={!canDesign}
+                    title={!canDesign ? 'Select bottle, liquid, and closure first' : undefined}
+                    onClick={handleDesignWithAi}
+                  >
+                    Design with AI
+                  </button>
+                  <button
+                    className="configurator-button"
+                    disabled={!canDesign}
+                    title={!canDesign ? 'Select bottle, liquid, and closure first' : undefined}
+                    onClick={handleUploadLabels}
+                  >
+                    Upload Your Labels
+                  </button>
+                </ActionsCenter>
                 <ActionsCenter>
                   <button className="configurator-button" onClick={() => handleLearnClick()}>
                     Learn How to Use Our Designer
