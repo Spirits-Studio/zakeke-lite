@@ -1,12 +1,11 @@
 import React, { FunctionComponent, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 // import styled from 'styled-components';
 import { useZakeke } from 'zakeke-configurator-react';
-import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, ClosureSections, SectionTitle, SwatchGrid, SwatchButton, SwatchNoneLabel, LabelGrid, LabelCard, LabelCardTitle, ActionsCenter, ConfigWarning, ViewportSpacer } from './list';
+import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, LabelGrid, LabelCard, LabelCardTitle, ActionsCenter, ConfigWarning, ViewportSpacer } from './list';
 // import { List, StepListItem, , ListItemImage } from './list';
 import { optionNotes } from '../data/option-notes';
 import { TailSpin } from 'react-loader-spinner';
 import { useOrderStore } from '../state/orderStore';
-import { WOOD_SWATCHES, WAX_SWATCHES } from '../data/options';  
 
 let firstRenderPosted = false;
 
@@ -112,17 +111,11 @@ const Selector: FunctionComponent<{}> = () => {
       setFromSelections,
       labelDesigns,
       setFromUploadDesign,
-      closureChoices,
-      setClosureWood,
-      setClosureWax,
     } = useOrderStore((state) => ({
       order: state.order,
       setFromSelections: state.setFromSelections,
       labelDesigns: state.labelDesigns,
       setFromUploadDesign: state.setFromUploadDesign,
-      closureChoices: state.closureChoices,
-      setClosureWood: state.setClosureWood,
-      setClosureWax: state.setClosureWax,
     }));
 
     const primaryGroup = useMemo(() => {
@@ -144,9 +137,8 @@ const Selector: FunctionComponent<{}> = () => {
     const closureNameSet = useMemo(() => {
       const base = [
         ...Object.keys(optionNotes.closures || {}),
-        ...WOOD_SWATCHES.map(s => s.key),
-        ...WAX_SWATCHES.map(s => s.key),
         'No Wax Seal',
+        'Wax Sealed',
         'Wooden Closure',
       ];
       return new Set(base.map(name => name.trim().toLowerCase()));
@@ -361,8 +353,6 @@ const Selector: FunctionComponent<{}> = () => {
     const [selectedStepId, selectStep] = useState<number | null>(null);
     const [selectedAttributeId, selectAttribute] = useState<number | null>(null);
 
-    const [isSelecting, setIsSelecting] = useState(false);
-
     const selectedGroup = groups.find(group => group.id === selectedGroupId);
     const selectedStep = selectedGroup?.steps.find(step => step.id === selectedStepId) ?? null;
 
@@ -465,7 +455,6 @@ const Selector: FunctionComponent<{}> = () => {
       liquid: miniLiquid,
       closure: miniClosure,
       label: miniLabel,
-      closureExtras: closureChoices,
     } as const), [
       bottleSel,
       liquidSel,
@@ -475,7 +464,6 @@ const Selector: FunctionComponent<{}> = () => {
       miniLiquid,
       miniClosure,
       miniLabel,
-      closureChoices,
     ]);
 
     // Key that only changes when meaningful order fields change, closure id excluded to avoid transient updates during attribute switch
@@ -521,7 +509,6 @@ const Selector: FunctionComponent<{}> = () => {
           // carry VistaCreate design IDs for edit flow
           frontDesignId: (labelDesigns as any)?.front?.id ?? null,
           backDesignId:  (labelDesigns as any)?.back?.id  ?? null,
-          closureExtras: selections.closureExtras,
         },
         mesh: { frontMeshId, backMeshId },
         valid,
@@ -628,21 +615,6 @@ const Selector: FunctionComponent<{}> = () => {
     const attributes = useMemo(() => (selectedStep || selectedGroup)?.attributes ?? [], [selectedGroup, selectedStep]);
     const selectedAttribute = attributes.find(attribute => attribute.id === selectedAttributeId);
 
-    const stepsRef = useRef<any[]>(steps);
-    useEffect(() => {
-      stepsRef.current = steps;
-    }, [steps]);
-
-    const selectedAttributeIdRef = useRef<number | null>(selectedAttributeId);
-    useEffect(() => {
-      selectedAttributeIdRef.current = selectedAttributeId;
-    }, [selectedAttributeId]);
-
-    const selectedStepIdRef = useRef<number | null>(selectedStepId);
-    useEffect(() => {
-      selectedStepIdRef.current = selectedStepId;
-    }, [selectedStepId]);
-
     // When step changes, ensure an attribute is selected
     useEffect(() => {
       if (!selectedStep && !selectedGroup) return;
@@ -719,7 +691,6 @@ const Selector: FunctionComponent<{}> = () => {
                     'liquid': productObject.selections.liquid,
                     'closure': productObject.selections.closure,
                     'label': productObject.selections.label,
-                    'closureExtras': productObject.selections.closureExtras,
                   },
                   'designSide': designSide,
                   'designExport': designExport,
@@ -750,7 +721,6 @@ const Selector: FunctionComponent<{}> = () => {
                     'liquid': productObject.selections.liquid,
                     'closure': productObject.selections.closure,
                     'label': productObject.selections.label,
-                    'closureExtras': productObject.selections.closureExtras,
                   },
                   'designSide': designSide,
                   'designExport': designExport,
@@ -985,167 +955,11 @@ const Selector: FunctionComponent<{}> = () => {
     ]);
 
     // --- Helper: find an option by exact name across ALL attributes in the current step ---
-    const findOptionInStepByName = useMemo(() => {
-      return (step: any, name: string): { attributeId: number | null; optionId: number | null } => {
-        if (!step) return { attributeId: null, optionId: null };
-
-        const needle = (name || '').trim().toLowerCase();
-        const attrs: any[] = Array.isArray(step.attributes) ? step.attributes : [];
-
-        // Search order: enabled attrs first, then the rest
-        const orderedAttrs = [
-          ...attrs.filter(a => !!a?.enabled),
-          ...attrs.filter(a => !a?.enabled),
-        ];
-
-        for (const a of orderedAttrs) {
-          const opts: any[] = Array.isArray(a?.options) ? a.options : [];
-          // Prefer enabled options, but fall back if needed
-          const orderedOpts = [
-            ...opts.filter(o => !!o?.enabled),
-            ...opts.filter(o => !o?.enabled),
-          ];
-          const hit = orderedOpts.find(
-            o => (o?.name || '').trim().toLowerCase() === needle
-          );
-          if (hit) return { attributeId: a.id, optionId: hit.id };
-        }
-
-        return { attributeId: null, optionId: null };
-      };
-    }, []);
-
-    // Utility: wait for a predicate to become true with timeout (helps with Zakeke async UI updates)
-    const waitFor = (predicate: () => boolean, timeout = 2500, interval = 50) =>
-      new Promise<boolean>((resolve) => {
-        const start = Date.now();
-        const tick = () => {
-          let ok = false;
-          try { ok = !!predicate(); } catch {}
-          if (ok) return resolve(true);
-          if (Date.now() - start >= timeout) return resolve(false);
-          setTimeout(tick, interval);
-        };
-        tick();
-      });
-
-    const closureStepIdRef = useRef<number | null>(closureStepId);
-    useEffect(() => {
-      closureStepIdRef.current = closureStepId;
-    }, [closureStepId]);
-
     const selectedOptionForNotes = useMemo(() => {
       if (!selectedAttribute) return null;
       const opts = Array.isArray((selectedAttribute as any).options) ? (selectedAttribute as any).options : [];
       return opts.find((opt: any) => opt?.selected && opt?.name !== 'No Selection') || null;
     }, [selectedAttribute]);
-
-    const findStepById = useCallback((id: number | null) => {
-      if (id == null) return null;
-      const latestSteps = stepsRef.current;
-      return latestSteps.find(step => step?.id === id) || null;
-    }, []);
-
-    const latestSelectionForStep = useCallback((id: number | null) => {
-      const step = findStepById(id);
-      return step ? findSelectedOption(step) : null;
-    }, [findStepById]);
-
-    // --- Helper: ensure atomic update for closure selection ---
-    const selectOptionOnAttribute = async (
-      attributeId: number | null,
-      optionId: number | null
-    ) => {
-      if (!attributeId || !optionId || isSelecting) return;
-
-      setIsSelecting(true);
-      try {
-        const attrId = Number(attributeId);
-        const optId  = Number(optionId);
-        if (!Number.isFinite(attrId) || !Number.isFinite(optId)) return;
-
-        // Ensure we're on the Closure step (defensive)
-        if (closureStepId != null && selectedStepIdRef.current !== closureStepId) {
-          selectStep(closureStepId);
-          await waitFor(() => selectedStepIdRef.current === closureStepId, 2000, 40);
-        }
-
-        if (selectedAttributeIdRef.current !== attrId) {
-          selectAttribute(attrId);
-          await waitFor(() => selectedAttributeIdRef.current === attrId, 2000, 40);
-        }
-
-        // Select the option and confirm
-        selectOption(optId);
-        const ok = await waitFor(() => {
-          const step = findStepById(closureStepIdRef.current);
-          const attrs: any[] = Array.isArray(step?.attributes) ? step!.attributes : [];
-          const activeAttr = attrs.find((a: any) => a?.id === attrId) || null;
-          const opts: any[] = Array.isArray(activeAttr?.options) ? activeAttr!.options : [];
-          return !!opts.find(o => o.id === optId && o.selected);
-        }, 1500, 40);
-
-        if (!ok) {
-          await new Promise(r => setTimeout(r, 60));
-          selectOption(optId);
-          await waitFor(() => {
-            const step = findStepById(closureStepIdRef.current);
-            const attrs: any[] = Array.isArray(step?.attributes) ? step!.attributes : [];
-            const activeAttr = attrs.find((a: any) => a?.id === attrId) || null;
-            const opts: any[] = Array.isArray(activeAttr?.options) ? activeAttr!.options : [];
-            return !!opts.find(o => o.id === optId && o.selected);
-          }, 2000, 40);
-        }
-
-        // === Atomic commit to store ===
-        const latestClosureSel = latestSelectionForStep(closureStepId);
-        const latestBottleSel = latestSelectionForStep(bottleStepId);
-        const latestLiquidSel = latestSelectionForStep(liquidStepId);
-        const latestLabelSel  = latestSelectionForStep(labelStepId);
-
-        const latestBottleMini = latestBottleSel ? toMini(latestBottleSel) : miniBottle;
-        const latestLiquidMini = latestLiquidSel ? toMini(latestLiquidSel) : miniLiquid;
-        const latestClosureMini = latestClosureSel ? toMini(latestClosureSel) : miniClosure;
-        const latestLabelMini = latestLabelSel ? toMini(latestLabelSel) : miniLabel;
-
-        const latestSelections = {
-          bottleSel: latestBottleSel,
-          liquidSel: latestLiquidSel,
-          closureSel: latestClosureSel,
-          labelSel: latestLabelSel,
-          bottle: latestBottleMini,
-          liquid: latestLiquidMini,
-          closure: latestClosureMini,
-          label: latestLabelMini,
-        } as const;
-
-        setFromSelections({ selections: latestSelections as any, sku: product?.sku ?? null, price });
-      } finally {
-        // small delay to avoid rapid double-clicks
-        setTimeout(() => setIsSelecting(false), 120);
-      }
-    };
-
-    const onPickWood = async (name: string, hex: string) => {
-      setClosureWood({ name, hex });
-      const { attributeId, optionId } = findOptionInStepByName(selectedStep, name);
-      await selectOptionOnAttribute(attributeId, optionId);
-    };
-
-    const onPickWax = async (name: string, hex: string) => {
-      if (!hex) {
-        // No Wax Seal
-        setClosureWax(null);
-        const { attributeId, optionId } = findOptionInStepByName(selectedStep, 'No Wax Seal');
-        await selectOptionOnAttribute(attributeId, optionId);
-        return;
-      }
-      const full = `Wax Sealed in ${name}`; // matches option names
-      setClosureWax({ name: full, hex });
-      const { attributeId, optionId } = findOptionInStepByName(selectedStep, full);
-      await selectOptionOnAttribute(attributeId, optionId);
-    };
-
 
     const onLabelStep = selectedStepRole === 'label';
 
@@ -1184,7 +998,6 @@ const Selector: FunctionComponent<{}> = () => {
             'liquid': productObject.selections.liquid,
             'closure': productObject.selections.closure,
             'label': productObject.selections.label,
-            'closureExtras': productObject.selections.closureExtras,
           },
           'designSide': side,
           'designType': designType,
@@ -1226,7 +1039,6 @@ const Selector: FunctionComponent<{}> = () => {
                         liquid: productObject.selections.liquid,
                         closure: productObject.selections.closure,
                         label: productObject.selections.label,
-                        closureExtras: closureChoices,
                     }
                 }, "*");
 
@@ -1287,7 +1099,7 @@ const Selector: FunctionComponent<{}> = () => {
             {/* Options */}
             {/* Options (hidden on label step) */}
             {/* Options / Custom rendering for Closure step */}
-            {!onLabelStep && !isClosureStep && (
+            {!onLabelStep && (
               <OptionsWrap>
                 {selectedAttribute?.options
                   .filter(() => true)
@@ -1295,15 +1107,9 @@ const Selector: FunctionComponent<{}> = () => {
                     option.name !== "No Selection" && (
                       <OptionListItem
                         key={option.id}
-                        onClick={() => {
-                          if (isSelecting) return;
-                          selectOption(option.id);
-                        }}
+                        onClick={() => selectOption(option.id)}
                         $selected={option.selected}
-                        $disabled={isSelecting}
                         $width="200px"
-                        className={isSelecting ? 'is-selecting' : undefined}
-                        aria-busy={isSelecting ? true : undefined}
                         tabIndex={0}
                       >
                         <OptionText>
@@ -1316,58 +1122,6 @@ const Selector: FunctionComponent<{}> = () => {
                     )
                   ))}
               </OptionsWrap>
-            )}
-
-            {(!onLabelStep && isClosureStep) && (
-              <ClosureSections>
-                {/* Wood section */}
-                <div>
-                  <SectionTitle>Choose Your Wood</SectionTitle>
-                  <SwatchGrid>
-                    {WOOD_SWATCHES.map(s => {
-                      const selected = closureChoices?.wood?.hex === s.hex;
-                      return (
-                        <SwatchButton
-                          key={s.key}
-                          aria-label={s.key}
-                          onClick={() => onPickWood(s.key, s.hex)}
-                          $disabled={isSelecting}
-                          className={isSelecting ? 'is-selecting' : undefined}
-                          $selected={selected}
-                          $hex={s.hex}
-                          title={s.key}
-                        />
-                      );
-                    })}
-                  </SwatchGrid>
-                </div>
-
-                {/* Wax section */}
-                <div>
-                  <SectionTitle>Choose a Wax Colour</SectionTitle>
-                  <SwatchGrid>
-                    {WAX_SWATCHES.map(s => {
-                      const isNone = s.key === 'No Wax Seal';
-                      const selected = isNone ? !closureChoices?.wax : closureChoices?.wax?.hex === s.hex;
-                      return (
-                        <SwatchButton
-                          key={s.key}
-                          aria-label={s.key}
-                          onClick={() => onPickWax(s.key, s.hex)}
-                          $disabled={isSelecting}
-                          className={isSelecting ? 'is-selecting' : undefined}
-                          $selected={selected}
-                          $hex={s.hex}
-                          $isNone={isNone}
-                          title={s.key}
-                        >
-                          {isNone && (<SwatchNoneLabel>None</SwatchNoneLabel>)}
-                        </SwatchButton>
-                      );
-                    })}
-                  </SwatchGrid>
-                </div>
-              </ClosureSections>
             )}
 
             {onLabelStep && (frontVisible || backVisible) && (
