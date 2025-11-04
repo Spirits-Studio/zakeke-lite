@@ -9,7 +9,6 @@ import { useOrderStore } from '../state/orderStore';
 import { WOOD_SWATCHES, WAX_SWATCHES } from '../data/options';  
 
 
-
 const Selector: FunctionComponent<{}> = () => {
     const {
         isSceneLoading,
