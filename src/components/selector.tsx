@@ -92,13 +92,6 @@ const Selector: FunctionComponent<{}> = () => {
         // restoreMeshVisibility,
     } = useZakeke();
 
-    
-    console.log("groups", groups)
-    console.log("product", product)
-    console.log("items", items)
-    console.log("price", price)
-    console.log("isSceneLoading", isSceneLoading)
-    
     const allowedParentOrigins = useMemo(() => {
       const envList = (process.env.REACT_APP_PARENT_ORIGINS || '')
         .split(',')
@@ -241,7 +234,6 @@ const Selector: FunctionComponent<{}> = () => {
     };
 
     const bottleSel = findSelectedOption(bottleStep);
-    console.log("bottleSel", bottleSel);
 
     const bottleSlugFromSelection = useMemo(
       () => slugFromOption(bottleSel),
@@ -326,10 +318,6 @@ const Selector: FunctionComponent<{}> = () => {
     const liquidSel  = pickFromStep(liquidStep, 'liquid');
     const closureSel = pickFromStep(closureStep, 'closure');
     const labelSel   = pickFromStep(labelStep, 'label');
-
-    console.log("liquidSel", liquidSel);
-    console.log("closureSel", closureSel);
-    console.log("labelSel", labelSel);
 
     const bottleSlug = resolvedBottle.slug;
     const hasBottleStep = !!bottleStep;
@@ -468,11 +456,6 @@ const Selector: FunctionComponent<{}> = () => {
     const miniClosure = toMini(closureSel);
     const miniLabel   = toMini(labelSel);
 
-    console.log("miniBottle", miniBottle);
-    console.log("miniLiquid", miniLiquid);
-    console.log("miniClosure", miniClosure);
-    console.log("miniLabel", miniLabel);
-
     const selections = useMemo(() => ({
       bottleSel,
       liquidSel,
@@ -495,8 +478,6 @@ const Selector: FunctionComponent<{}> = () => {
       closureChoices,
     ]);
 
-    console.log("selections", selections)
-
     // Key that only changes when meaningful order fields change, closure id excluded to avoid transient updates during attribute switch
     const orderKey = [
       product?.sku ?? '',
@@ -506,21 +487,6 @@ const Selector: FunctionComponent<{}> = () => {
       /* closure id excluded to avoid transient updates during attribute switch */
       selections.label?.id ?? 0,
     ].join('|');
-
-    // Debug: compact order log on every meaningful change
-    useEffect(() => {
-      console.log('order', {
-        sku: product?.sku ?? null,
-        price,
-        bottle: miniBottle?.name || null,
-        liquid: miniLiquid?.name || null,
-        closure: miniClosure?.name || null,
-        label: miniLabel?.name || null,
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [orderKey]);
-
-
     useEffect(() => {
       setFromSelections({
         selections,
@@ -659,9 +625,6 @@ const Selector: FunctionComponent<{}> = () => {
 
 
     // (Optional debug) Log selected group/step
-    console.log('UI selectedGroupId', selectedGroupId, '->', selectedGroup?.name);
-    console.log('UI selectedStepId', selectedStepId, '->', selectedStep?.name);
-
     const attributes = useMemo(() => (selectedStep || selectedGroup)?.attributes ?? [], [selectedGroup, selectedStep]);
     const selectedAttribute = attributes.find(attribute => attribute.id === selectedAttributeId);
 
@@ -711,11 +674,8 @@ const Selector: FunctionComponent<{}> = () => {
         if (!payload || typeof payload !== 'object') return;
 
         if (payload.customMessageType === 'uploadDesign') {
-          console.log("Received uploadDesign message:", payload.message);
 
           const { designExport, designSide } = payload.message || {};
-          console.log("designExport", designExport)
-          console.log("designSide", designSide)
           const parentOrder = payload.message?.order;
           if (designSide) {
             // Persist to zustand so UI flips to "Edit [side] label" and save gating can use it
@@ -766,22 +726,6 @@ const Selector: FunctionComponent<{}> = () => {
                   'productSku': product?.sku ?? null,
                 }
               }, '*');
-
-              console.log("postMessage Content:", {
-                customMessageType: 'labelAdded',
-                message: {
-                  'order': {
-                    'bottle': productObject.selections.bottle,
-                    'liquid': productObject.selections.liquid,
-                    'closure': productObject.selections.closure,
-                    'label': productObject.selections.label,
-                    'closureExtras': productObject.selections.closureExtras,
-                  },
-                  'designSide': designSide,
-                  'designExport': designExport,
-                  'productSku': product?.sku ?? null,
-                }
-              });
             }
           
           } else if(designSide === "back") {
@@ -813,22 +757,6 @@ const Selector: FunctionComponent<{}> = () => {
                   'productSku': product?.sku ?? null,
                 }
               }, '*');
-
-              console.log("postMessage Content:", {
-                customMessageType: 'labelAdded',
-                message: {
-                  'order': {
-                    'bottle': productObject.selections.bottle,
-                    'liquid': productObject.selections.liquid,
-                    'closure': productObject.selections.closure,
-                    'label': productObject.selections.label,
-                    'closureExtras': productObject.selections.closureExtras,
-                  },
-                  'designSide': designSide,
-                  'designExport': designExport,
-                  'productSku': product?.sku ?? null,
-                }
-              });
             }
           }
         }
@@ -854,7 +782,6 @@ const Selector: FunctionComponent<{}> = () => {
           console.warn('[Configurator] Failed to remove item', it?.guid, err);
         }
       }
-      console.log('[Configurator] Cleared', live.length, 'items after bottle change');
     }, [items, removeItem]);
 
     useEffect(() => {
@@ -1266,22 +1193,6 @@ const Selector: FunctionComponent<{}> = () => {
         }
       }, '*');
 
-      console.log("postMessage Content:", {
-        customMessageType: 'callDesigner',
-        message: {
-          'order': {
-            'bottle': productObject.selections.bottle,
-            'liquid': productObject.selections.liquid,
-            'closure': productObject.selections.closure,
-            'label': productObject.selections.label,
-            'closureExtras': productObject.selections.closureExtras,
-          },
-          'designSide': side,
-          'designType': designType,
-          'designId': designId,
-          'productSku': product?.sku ?? null,
-        }
-      });
     };    
 
     const handleLearnClick = (side?: 'front' | 'back') => {
@@ -1303,25 +1214,6 @@ const Selector: FunctionComponent<{}> = () => {
         await addToCart(
             {},
             async (data) => {
-                console.log("data", data);
-
-                console.log("postMessage Content:", {
-                    customMessageType: "AddToCart",
-                    message: {
-                        preview: data.preview,
-                        quantity: data.quantity,
-                        compositionId: data.composition,
-                        zakekeAttributes: data.attributes,
-                        product_id: product?.sku || null,
-                        bottle: productObject.selections.bottle,
-                        liquid: productObject.selections.liquid,
-                        closure: productObject.selections.closure,
-                        label: productObject.selections.label,
-                        closureExtras: closureChoices,
-                    }
-                }
-                )
-
                 window.parent.postMessage({
                     customMessageType: "AddToCart",
                     message: {
@@ -1405,12 +1297,6 @@ const Selector: FunctionComponent<{}> = () => {
                         key={option.id}
                         onClick={() => {
                           if (isSelecting) return;
-                          console.log('User selected option:', {
-                            name: option.name,
-                            attribute: selectedAttribute.name,
-                            enabled: option.enabled,
-                            selected: option.selected
-                          });
                           selectOption(option.id);
                         }}
                         $selected={option.selected}
