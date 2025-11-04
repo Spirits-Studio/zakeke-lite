@@ -319,6 +319,7 @@ const Selector: FunctionComponent<{}> = () => {
     const prev       = useRef(isSceneLoading);
     const postedOnce = useRef(false); // per-mount guard
     const sceneLoadedPostedRef = useRef(false);
+    const settleTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
       // record if we've *ever* seen true
@@ -350,64 +351,37 @@ const Selector: FunctionComponent<{}> = () => {
     }, [isSceneLoading]);
 
     useEffect(() => {
-      const handler = () => {
-        if (sceneLoadedPostedRef.current) return;
-        sceneLoadedPostedRef.current = true;
-        window.parent?.postMessage(
-          { customMessageType: 'sceneLoaded', message: { closeLoadingScreen: true } },
-          '*'
-        );
-      };
+      if (sceneLoadedPostedRef.current) return undefined;
 
-      const tryAttach = () => {
-        const viewer = (window as any)?.ZakekeViewer;
-        const onSceneLoaded = viewer?.api?.onSceneLoaded;
-        const offSceneLoaded = viewer?.api?.offSceneLoaded;
-        const isAlreadyLoaded = () => {
-          try {
-            if (typeof viewer?.api?.isSceneLoaded === 'function') {
-              return !!viewer.api.isSceneLoaded();
-            }
-          } catch {}
-          return viewer?.api?.sceneLoaded === true;
-        };
-
-        if (viewer?.api && isAlreadyLoaded()) {
-          handler();
+      if (isSceneLoading) {
+        if (settleTimerRef.current) {
+          window.clearTimeout(settleTimerRef.current);
+          settleTimerRef.current = null;
         }
-
-        if (typeof onSceneLoaded !== 'function') return null;
-        const unsubscribe = onSceneLoaded(handler);
-        if (typeof unsubscribe === 'function') {
-          return unsubscribe;
-        }
-        if (typeof offSceneLoaded === 'function') {
-          return () => offSceneLoaded(handler);
-        }
-        return () => {};
-      };
-
-      let cleanup: (() => void) | null = tryAttach();
-      if (cleanup) {
-        return () => {
-          if (cleanup) cleanup();
-        };
+        return undefined;
       }
 
-      const interval = window.setInterval(() => {
-        if (!cleanup) {
-          cleanup = tryAttach();
-        }
-        if (cleanup) {
-          window.clearInterval(interval);
-        }
+      settleTimerRef.current = window.setTimeout(() => {
+        settleTimerRef.current = null;
+        if (sceneLoadedPostedRef.current || isSceneLoading) return;
+
+        window.requestAnimationFrame(() => {
+          if (sceneLoadedPostedRef.current || isSceneLoading) return;
+          sceneLoadedPostedRef.current = true;
+          window.parent?.postMessage(
+            { customMessageType: 'sceneLoaded', message: { closeLoadingScreen: true } },
+            '*'
+          );
+        });
       }, 200);
 
       return () => {
-        if (cleanup) cleanup();
-        window.clearInterval(interval);
+        if (settleTimerRef.current) {
+          window.clearTimeout(settleTimerRef.current);
+          settleTimerRef.current = null;
+        }
       };
-    }, []);
+    }, [isSceneLoading]);
 
     // --- UI navigation state (must be declared before effects that depend on them) ---
     const [selectedGroupId, selectGroup] = useState<number | null>(null);
