@@ -6,6 +6,6 @@ export const optionNotes: Record<string, Record<string, string>> = {
     },
     closures: {
         "Light Wood": "A natural beech stopper with a synthetic stem.",
-        "Wax Sealed": "A black wood stopper with a synthetic stem.",
+        "Dark Wood": "A black wood stopper with a synthetic stem.",
     }
     };
