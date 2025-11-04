@@ -1007,16 +1007,6 @@ const Selector: FunctionComponent<{}> = () => {
     //   const hit = closureOptions.find(o => (o.name || '').trim().toLowerCase() === needle);
     //   return hit?.id ?? null;
     // };
-
-    const handleLearnClick = (side?: 'front' | 'back') => {
-      window.parent.postMessage({
-        customMessageType: 'OpenDesignerHelp',
-        message: {
-          ...(side ? { side } : {}),
-          productSku: product?.sku ?? null,
-        }
-      }, '*');
-    };
     
 
     if (isSceneLoading || !groups || groups.length === 0)
@@ -1140,11 +1130,6 @@ const Selector: FunctionComponent<{}> = () => {
                     onClick={handleUploadLabels}
                   >
                     Upload Your Labels
-                  </button>
-                </ActionsCenter>
-                <ActionsCenter>
-                  <button className="configurator-button" onClick={() => handleLearnClick()}>
-                    Learn How to Use Our Designer
                   </button>
                 </ActionsCenter>
               </>
