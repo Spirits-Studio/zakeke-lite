@@ -318,8 +318,6 @@ const Selector: FunctionComponent<{}> = () => {
     const seenTrue   = useRef(false);
     const prev       = useRef(isSceneLoading);
     const postedOnce = useRef(false); // per-mount guard
-    const sceneLoadedPostedRef = useRef(false);
-    const settleTimerRef = useRef<number | null>(null);
 
     useEffect(() => {
       // record if we've *ever* seen true
@@ -348,39 +346,6 @@ const Selector: FunctionComponent<{}> = () => {
       }
 
       prev.current = isSceneLoading;
-    }, [isSceneLoading]);
-
-    useEffect(() => {
-      if (sceneLoadedPostedRef.current) return undefined;
-
-      if (isSceneLoading) {
-        if (settleTimerRef.current) {
-          window.clearTimeout(settleTimerRef.current);
-          settleTimerRef.current = null;
-        }
-        return undefined;
-      }
-
-      settleTimerRef.current = window.setTimeout(() => {
-        settleTimerRef.current = null;
-        if (sceneLoadedPostedRef.current || isSceneLoading) return;
-
-        window.requestAnimationFrame(() => {
-          if (sceneLoadedPostedRef.current || isSceneLoading) return;
-          sceneLoadedPostedRef.current = true;
-          window.parent?.postMessage(
-            { customMessageType: 'sceneLoaded', message: { closeLoadingScreen: true } },
-            '*'
-          );
-        });
-      }, 200);
-
-      return () => {
-        if (settleTimerRef.current) {
-          window.clearTimeout(settleTimerRef.current);
-          settleTimerRef.current = null;
-        }
-      };
     }, [isSceneLoading]);
 
     // --- UI navigation state (must be declared before effects that depend on them) ---
