@@ -7,7 +7,6 @@ import { optionNotes } from '../data/option-notes';
 import { TailSpin } from 'react-loader-spinner';
 import { useOrderStore } from '../state/orderStore';
 
-let firstRenderPosted = false;
 
 const slugify = (value: string) =>
   (value || '')
@@ -295,37 +294,66 @@ const Selector: FunctionComponent<{}> = () => {
       }
     }, [bottleStep, bottleSel, selectOption]);
 
-    // Notify parent once when the configurator is truly ready (assets + scene + viewer + pricing)
-    const readyOnceRef = useRef(false);
+    // Post the ready signal only once per component mount (avoids Fast Refresh/module-scope leakage)
+    const firstRenderPostedRef = useRef(false);
+    // Handshake to avoid duplicate firstRender deliveries in production
+    const readyAckedRef = useRef(false);
+    // Stable correlation id per mount
+    const readyMsgIdRef = useRef<string>('');
+    if (!readyMsgIdRef.current) {
+      const t = Date.now();
+      const r = Math.floor(Math.random() * 1e9);
+      readyMsgIdRef.current = `ready-${t}-${r}`;
+    }
+    const readyRetryTimer1 = useRef<number | null>(null);
+    const readyRetryTimer2 = useRef<number | null>(null);
 
+    // Parent window should ACK with:
+    // window.postMessage({ customMessageType: 'firstRenderAck', meta: { correlationId: <value from our firstRender.meta.correlationId> } }, '*');
     useEffect(() => {
       // Compute readiness across multiple signals
       const assetsOk = isAssetsLoading === false && isSceneLoading === false;
       const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
       const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
       const pricedOk = price != null; // Zakeke has calculated price at least once
-
       const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
 
-      if (!readyOnceRef.current && !firstRenderPosted && isReady) {
-        // guard to ensure we only ever post once per mount/session
-        readyOnceRef.current = true;
-        firstRenderPosted = true;
+      // Debug: show gate state on every change
+      console.log('[READY EFFECT]', { assetsOk, viewerOk, basicsOk, pricedOk, isReady, alreadyPosted: firstRenderPostedRef.current });
 
-        // allow one or two paints to settle UI before notifying parent
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            try {
-              window.parent?.postMessage(
-                { customMessageType: 'firstRender', message: { closeLoadingScreen: true } },
-                '*'
-              );
-            } catch (e) {
-              console.error('postMessage failed', e);
-            }
-          });
-        });
+      if (isReady && !firstRenderPostedRef.current) {
+        firstRenderPostedRef.current = true;
+
+        const correlationId = readyMsgIdRef.current;
+
+        const basePayload = { customMessageType: 'firstRender', message: { closeLoadingScreen: true }, meta: { iframeOrigin: window.location.origin, correlationId } } as const;
+
+        const send = (stage: 'immediate' | 'retry1' | 'retry2') => {
+          try {
+            window.parent?.postMessage(basePayload, '*');
+            window.top?.postMessage(basePayload, '*');
+            console.log('[READY EFFECT] postMessage:', stage, basePayload.meta);
+          } catch (e) {
+            console.error('[READY EFFECT] postMessage failed', stage, e);
+          }
+        };
+
+        // 1) Send now
+        send('immediate');
+
+        // 2) Schedule up to 2 retries unless ACK arrives
+        readyRetryTimer1.current = window.setTimeout(() => {
+          if (!readyAckedRef.current) send('retry1');
+        }, 300);
+
+        readyRetryTimer2.current = window.setTimeout(() => {
+          if (!readyAckedRef.current) send('retry2');
+        }, 1000);
       }
+      return () => {
+        if (readyRetryTimer1.current) { clearTimeout(readyRetryTimer1.current as any); readyRetryTimer1.current = null; }
+        if (readyRetryTimer2.current) { clearTimeout(readyRetryTimer2.current as any); readyRetryTimer2.current = null; }
+      };
     }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
 
     // DEBUG: Log readiness flags and which condition is blocking firstRender
@@ -752,6 +780,17 @@ const Selector: FunctionComponent<{}> = () => {
         }
 
         const payload = e.data;
+        // Handle parent ACK to stop retries
+        if (payload && typeof payload === 'object' && payload.customMessageType === 'firstRenderAck') {
+          const cid = payload?.meta?.correlationId || payload?.correlationId;
+          if (cid && cid === readyMsgIdRef.current) {
+            readyAckedRef.current = true;
+            if (readyRetryTimer1.current) { clearTimeout(readyRetryTimer1.current as any); readyRetryTimer1.current = null; }
+            if (readyRetryTimer2.current) { clearTimeout(readyRetryTimer2.current as any); readyRetryTimer2.current = null; }
+            console.log('[READY EFFECT] ACK received from parent; stopping retries');
+            return; // nothing else to do on ack
+          }
+        }
         if (!payload || typeof payload !== 'object') return;
 
         if (payload.customMessageType === 'uploadDesign') {
@@ -849,7 +888,7 @@ const Selector: FunctionComponent<{}> = () => {
       };
       window.addEventListener('message', onMsg);
       return () => window.removeEventListener('message', onMsg);
-    }, [allowedParentOrigins, createImageFromUrl, addItemImage, productObject, product?.sku, setFromUploadDesign, findLabelArea]);
+    }, [allowedParentOrigins, createImageFromUrl, addItemImage, items, productObject, product?.sku, setFromUploadDesign, findLabelArea]);
 
 
     // --- Clear items when bottle changes ---
