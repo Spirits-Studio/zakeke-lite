@@ -92,8 +92,7 @@ const Selector: FunctionComponent<{}> = () => {
     } = useZakeke();
 
     const allowedParentOrigins = useMemo(() => {
-      const envList = (process.env.REACT_APP_PARENT_ORIGINS || '')
-        .split(',')
+      const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk'])
         .map(origin => origin.trim())
         .filter(Boolean);
       const globalList =
