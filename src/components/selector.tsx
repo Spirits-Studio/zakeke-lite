@@ -767,7 +767,8 @@ const Selector: FunctionComponent<{}> = () => {
             console.log("items after adding label", items);
             
             if (frontImage?.imageID && frontAreaId) {
-              await addItemImage(frontImage.imageID, frontAreaId);
+              const addedImage = await addItemImage(frontImage.imageID, frontAreaId);
+              console.log("addedImage", addedImage);
 
               window.parent.postMessage({
                 customMessageType: 'labelAdded',
