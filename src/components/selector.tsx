@@ -702,8 +702,10 @@ const Selector: FunctionComponent<{}> = () => {
         selectAttribute(firstEnabledAttr.id);
       }
     }, [selectedStep, selectedGroup, selectedAttributeId, attributes]);
+    
     useEffect(() => {
       const onMsg = async (e: MessageEvent) => {
+        console.log("Received message", e);
         const origin = e.origin || '';
         const originAllowed = (() => {
           if (!origin) return false;
