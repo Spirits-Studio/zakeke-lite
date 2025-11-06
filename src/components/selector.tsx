@@ -55,6 +55,18 @@ const buildSyntheticBottle = (slug: string) => {
   };
 };
 
+const DEFAULT_BOTTLE_SLUG = 'antica';
+const DEFAULT_BOTTLE = buildSyntheticBottle(DEFAULT_BOTTLE_SLUG) ?? {
+  slug: DEFAULT_BOTTLE_SLUG,
+  mini: {
+    id: syntheticIdFromSlug(DEFAULT_BOTTLE_SLUG),
+    guid: `synthetic-${DEFAULT_BOTTLE_SLUG}`,
+    name: titleize(DEFAULT_BOTTLE_SLUG),
+    selected: true,
+  },
+  option: null,
+};
+
 const slugFromOption = (option: any) => {
   if (!option) return '';
   const code = typeof option?.code === 'string' ? option.code : '';
@@ -106,12 +118,10 @@ const Selector: FunctionComponent<{}> = () => {
     }, []);
 
     const {
-      order: storedOrder,
       setFromSelections,
       labelDesigns,
       setFromUploadDesign,
     } = useOrderStore((state) => ({
-      order: state.order,
       setFromSelections: state.setFromSelections,
       labelDesigns: state.labelDesigns,
       setFromUploadDesign: state.setFromUploadDesign,
@@ -226,57 +236,16 @@ const Selector: FunctionComponent<{}> = () => {
 
     const bottleSel = findSelectedOption(bottleStep);
 
-    const bottleSlugFromSelection = useMemo(
-      () => slugFromOption(bottleSel),
-      [bottleSel]
-    );
-
-    const storedBottle = useMemo(() => {
-      const bottle = storedOrder?.bottle;
-      if (!bottle?.name || bottle.name.trim().toLowerCase() === 'no selection') return null;
-      const slug = slugify(bottle.name);
-      if (!slug) return null;
-      return {
-        slug,
-        mini: {
-          id: bottle.id,
-          guid: bottle.guid,
-          name: bottle.name,
-          selected: bottle.selected ?? true,
-        },
-        option: null,
-      };
-    }, [storedOrder?.bottle]);
-
-    const areaBottle = useMemo(() => {
-      const areas = Array.isArray(product?.areas) ? product!.areas : [];
-      const match = areas.find(a =>
-        /_label_(front|back)/i.test((a?.name || '').toLowerCase())
-      );
-      if (!match?.name) return null;
-      const base = match.name.replace(/_label_(front|back).*$/i, '');
-      const slug = slugify(base);
-      if (!slug) return null;
-      return buildSyntheticBottle(slug);
-    }, [product]);
-
     const resolvedBottle = useMemo(() => {
       if (bottleSel) {
-        const slug =
-          bottleSlugFromSelection ||
-          storedBottle?.slug ||
-          areaBottle?.slug ||
-          '';
         return {
-          slug,
+          slug: DEFAULT_BOTTLE_SLUG,
           mini: toMini(bottleSel),
           option: bottleSel,
         };
       }
-      if (storedBottle) return storedBottle;
-      if (areaBottle) return areaBottle;
-      return { slug: '', mini: null, option: null };
-    }, [bottleSel, bottleSlugFromSelection, storedBottle, areaBottle]);
+      return DEFAULT_BOTTLE;
+    }, [bottleSel]);
 
     const fallbackOption = (step: any | null, preferEnabled = true) => {
       if (!step) return null;
@@ -312,6 +281,21 @@ const Selector: FunctionComponent<{}> = () => {
 
     const bottleSlug = resolvedBottle.slug;
     const hasBottleStep = !!bottleStep;
+
+    useEffect(() => {
+      if (!bottleStep) return;
+      if (slugFromOption(bottleSel) === DEFAULT_BOTTLE_SLUG) return;
+
+      const attrs: any[] = Array.isArray(bottleStep.attributes) ? bottleStep.attributes : [];
+      for (const attr of attrs) {
+        const opts: any[] = Array.isArray(attr?.options) ? attr.options : [];
+        const antica = opts.find((o: any) => slugFromOption(o) === DEFAULT_BOTTLE_SLUG);
+        if (antica) {
+          if (!antica.selected) selectOption(antica.id);
+          break;
+        }
+      }
+    }, [bottleStep, bottleSel, selectOption]);
 
     // Notify parent once when the configurator finishes first render/load
     const seenTrue   = useRef(false);
