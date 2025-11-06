@@ -551,13 +551,90 @@ const Selector: FunctionComponent<{}> = () => {
 
     const labelAreas = useMemo(() => {
       const byName = (needle: string) =>
-      visibleAreas.find(a => (a.name || '').toLowerCase().includes(needle)) || null;
+        visibleAreas.find(a => (a.name || '').toLowerCase().includes(needle)) || null;
 
       const front = byName('front');
-      const back  = byName('back');
+      const back = byName('back');
 
       return { front, back } as const;
     }, [visibleAreas]);
+
+    const activeItems = useMemo(
+      () => (Array.isArray(items) ? items.filter((it: any) => !it?.deleted) : []),
+      [items]
+    );
+
+    const resolveItemAreaId = useCallback((item: any): number | null => {
+      if (!item || typeof item !== 'object') return null;
+
+      const toNumeric = (value: any): number | null => {
+        if (value == null) return null;
+
+        if (typeof value === 'string') {
+          const parsed = Number.parseInt(value, 10);
+          return Number.isFinite(parsed) ? parsed : null;
+        }
+
+        if (typeof value === 'number') {
+          return Number.isFinite(value) ? value : null;
+        }
+
+        if (Array.isArray(value)) {
+          for (const entry of value) {
+            const resolved = toNumeric(entry);
+            if (resolved != null) return resolved;
+          }
+          return null;
+        }
+
+        if (typeof value === 'object') {
+          return toNumeric([
+            (value as any).id,
+            (value as any).ID,
+            (value as any).areaId,
+            (value as any).areaID,
+            (value as any).sideId,
+            (value as any).sideID,
+          ]);
+        }
+
+        return null;
+      };
+
+      return toNumeric([
+        item.areaId,
+        item.areaID,
+        item.sideId,
+        item.sideID,
+        item.side,
+        item.area,
+        item.sides,
+        item.sideIds,
+        item.sideIDs,
+        item.areaIds,
+        item.areaIDs,
+      ]);
+    }, []);
+
+    const frontLabelAreaId = useMemo(
+      () => findLabelArea('front')?.id ?? null,
+      [findLabelArea]
+    );
+
+    const backLabelAreaId = useMemo(
+      () => findLabelArea('back')?.id ?? null,
+      [findLabelArea]
+    );
+
+    const labelsPopulated = useMemo(() => {
+      const frontReady =
+        frontLabelAreaId == null ||
+        activeItems.some(item => resolveItemAreaId(item) === frontLabelAreaId);
+      const backReady =
+        backLabelAreaId == null ||
+        activeItems.some(item => resolveItemAreaId(item) === backLabelAreaId);
+      return frontReady && backReady;
+    }, [activeItems, frontLabelAreaId, backLabelAreaId, resolveItemAreaId]);
 
     // Invisible warning helper (logs and stores a message for later UX surfacing)
     const setWarning = (msg: string) => {
@@ -673,6 +750,7 @@ const Selector: FunctionComponent<{}> = () => {
 
           if(designSide === "front") {
             const frontImage = await createImageFromUrl(designExport.s3url);
+            console.log("frontImage", frontImage);
             // const frontImage = await createImageFromUrl("https://barrel-n-bond.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
             // const frontMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_front`);
             // console.log("frontMeshId", frontMeshId);
@@ -1041,8 +1119,7 @@ const Selector: FunctionComponent<{}> = () => {
     }
 };
 
-    const bothLabelsDesigned = Boolean(labelDesigns.front && labelDesigns.back);
-    const showAddToCartButton = productObject.valid && bothLabelsDesigned;
+    const showAddToCartButton = productObject.valid && labelsPopulated;
 
     return (
       <>
