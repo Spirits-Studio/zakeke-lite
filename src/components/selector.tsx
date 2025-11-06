@@ -326,6 +326,54 @@ const Selector: FunctionComponent<{}> = () => {
       }
     }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
 
+    // DEBUG: Log readiness flags and which condition is blocking firstRender
+    const prevReadySnapshotRef = useRef<null | {
+      assetsOk: boolean;
+      viewerOk: boolean;
+      basicsOk: boolean;
+      pricedOk: boolean;
+      isReady: boolean;
+    }>(null);
+
+    useEffect(() => {
+      const assetsOk = isAssetsLoading === false && isSceneLoading === false;
+      const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
+      const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
+      const pricedOk = price != null;
+      const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
+
+      const prev = prevReadySnapshotRef.current;
+      const changed =
+        !prev ||
+        prev.assetsOk !== assetsOk ||
+        prev.viewerOk !== viewerOk ||
+        prev.basicsOk !== basicsOk ||
+        prev.pricedOk !== pricedOk ||
+        prev.isReady !== isReady;
+
+      if (changed) {
+        prevReadySnapshotRef.current = { assetsOk, viewerOk, basicsOk, pricedOk, isReady };
+        const blocks: string[] = [];
+        if (!assetsOk) blocks.push(`assetsOk=false (isAssetsLoading=${String(isAssetsLoading)} isSceneLoading=${String(isSceneLoading)})`);
+        if (!viewerOk) blocks.push('viewerOk=false (isViewerReady=false)');
+        if (!basicsOk) blocks.push(`basicsOk=false (product=${!!product}, groups=${Array.isArray(groups) ? groups.length : 'n/a'})`);
+        if (!pricedOk) blocks.push('pricedOk=false (price is null)');
+
+        // single compact log line for grepability
+        console.log('[ZAKEKE READY DEBUG]', {
+          assetsOk,
+          viewerOk,
+          basicsOk,
+          pricedOk,
+          isReady,
+          price,
+          sku: product?.sku ?? null,
+          groupsCount: Array.isArray(groups) ? groups.length : null,
+          blocks,
+        });
+      }
+    }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
+
     // --- UI navigation state (must be declared before effects that depend on them) ---
     const [selectedGroupId, selectGroup] = useState<number | null>(null);
     const [selectedStepId, selectStep] = useState<number | null>(null);
