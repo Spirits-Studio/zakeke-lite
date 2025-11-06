@@ -416,28 +416,25 @@ const Selector: FunctionComponent<{}> = () => {
       // We ARE on the label step → map bottle -> specific label option by code suffix
       const bottleKey = bottleSlug;
 
-      const match = !!bottleKey
-        ? opts.find(o => {
-            const code = typeof o?.code === 'string' ? o.code.toLowerCase() : '';
-            const nameSlug = slugify(o?.name || '');
-            if (code.endsWith(`_${bottleKey}`)) return true;
-            if (code.includes(`${bottleKey}_label`)) return true;
-            return nameSlug === bottleKey;
-          })
-        : null;
+      if (!bottleKey) {
+        if (noSel && !noSel.selected) selectOption(noSel.id);
+        return;
+      }
+
+      const match = opts.find(o => {
+        const code = typeof o?.code === 'string' ? o.code.toLowerCase() : '';
+        const nameSlug = slugify(o?.name || '');
+        if (code.endsWith(`_${bottleKey}`)) return true;
+        if (code.includes(`${bottleKey}_label`)) return true;
+        return nameSlug === bottleKey;
+      });
 
       if (match && !match.selected) {
         selectOption(match.id);
         return;
       }
 
-      const firstDesignOption = opts.find(o => o && o.id !== (noSel?.id ?? null)) || null;
-      if (firstDesignOption && !firstDesignOption.selected) {
-        selectOption(firstDesignOption.id);
-        return;
-      }
-
-      if (!match && !firstDesignOption && noSel && !noSel.selected) {
+      if (!match && noSel && !noSel.selected) {
         selectOption(noSel.id);
       }
     }, [labelStep, labelStepId, selectedStepId, selectedStep?.id, selectedStepRole, bottleSlug, selectOption]);
@@ -748,6 +745,8 @@ const Selector: FunctionComponent<{}> = () => {
           if (!designSide ) return;
 
           const targetArea = findLabelArea(designSide);
+          console.log("targetArea", targetArea);
+          console.log("items before adding label", items);
           if (!targetArea) {
             console.warn('No area found', { designSide, bottleSlug: productObject?.bottleSlug ?? null });
             return;
@@ -761,7 +760,9 @@ const Selector: FunctionComponent<{}> = () => {
             // console.log("frontMeshId", frontMeshId);
 
             const frontAreaId = targetArea.id;
-            // console.log("frontAreaId", frontAreaId);
+            console.log("frontAreaId", frontAreaId);
+
+            console.log("items after adding label", items);
             
             if (frontImage?.imageID && frontAreaId) {
               await addItemImage(frontImage.imageID, frontAreaId);
