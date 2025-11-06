@@ -723,6 +723,7 @@ const Selector: FunctionComponent<{}> = () => {
         if (!payload || typeof payload !== 'object') return;
 
         if (payload.customMessageType === 'uploadDesign') {
+          console.log("uploadDesign payload", payload);
 
           const { designExport, designSide } = payload.message || {};
           const parentOrder = payload.message?.order;
