@@ -119,15 +119,9 @@ const Selector: FunctionComponent<{}> = () => {
       return Array.from(new Set([...envList, ...normalizedGlobal]));
     }, []);
 
-    const {
-      setFromSelections,
-      labelDesigns,
-      setFromUploadDesign,
-    } = useOrderStore((state) => ({
-      setFromSelections: state.setFromSelections,
-      labelDesigns: state.labelDesigns,
-      setFromUploadDesign: state.setFromUploadDesign,
-    }));
+    const setFromSelections   = useOrderStore(state => state.setFromSelections);
+    const labelDesigns        = useOrderStore(state => state.labelDesigns);
+    const setFromUploadDesign = useOrderStore(state => state.setFromUploadDesign);
 
     const primaryGroup = useMemo(() => {
       if (!Array.isArray(groups)) return null;
