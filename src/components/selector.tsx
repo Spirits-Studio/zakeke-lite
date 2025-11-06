@@ -97,6 +97,8 @@ const Selector: FunctionComponent<{}> = () => {
         createImageFromUrl, 
         addItemImage,
         removeItem,
+        isAssetsLoading,
+        isViewerReady,
         // templates,
         // setTemplate,
         // setMeshDesignVisibility,
@@ -297,39 +299,38 @@ const Selector: FunctionComponent<{}> = () => {
       }
     }, [bottleStep, bottleSel, selectOption]);
 
-    // Notify parent once when the configurator finishes first render/load
-    const seenTrue   = useRef(false);
-    const prev       = useRef(isSceneLoading);
-    const postedOnce = useRef(false); // per-mount guard
+    // Notify parent once when the configurator is truly ready (assets + scene + viewer + pricing)
+    const readyOnceRef = useRef(false);
 
     useEffect(() => {
-      // record if we've *ever* seen true
-      if (isSceneLoading === true) seenTrue.current = true;
+      // Compute readiness across multiple signals
+      const assetsOk = isAssetsLoading === false && isSceneLoading === false;
+      const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
+      const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
+      const pricedOk = price != null; // Zakeke has calculated price at least once
 
-      // detect first falling edge: true -> false
-      const becameFalse = prev.current === true && isSceneLoading === false;
+      const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
 
-      if (
-        becameFalse &&
-        seenTrue.current &&
-        !postedOnce.current &&
-        !firstRenderPosted
-      ) {
-        postedOnce.current = true;
-        firstRenderPosted = true; // avoid double post across dev remounts
+      if (!readyOnceRef.current && !firstRenderPosted && isReady) {
+        // guard to ensure we only ever post once per mount/session
+        readyOnceRef.current = true;
+        firstRenderPosted = true;
 
-        try {
-          window.parent?.postMessage(
-            { customMessageType: 'firstRender', message: { closeLoadingScreen: true } },
-            '*' // set a specific origin if you can
-          );
-        } catch (e) {
-          console.error('postMessage failed', e);
-        }
+        // allow one or two paints to settle UI before notifying parent
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            try {
+              window.parent?.postMessage(
+                { customMessageType: 'firstRender', message: { closeLoadingScreen: true } },
+                '*'
+              );
+            } catch (e) {
+              console.error('postMessage failed', e);
+            }
+          });
+        });
       }
-
-      prev.current = isSceneLoading;
-    }, [isSceneLoading]);
+    }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
 
     // --- UI navigation state (must be declared before effects that depend on them) ---
     const [selectedGroupId, selectGroup] = useState<number | null>(null);
@@ -741,7 +742,7 @@ const Selector: FunctionComponent<{}> = () => {
           if(designSide === "front") {
             const frontImage = await createImageFromUrl(designExport.s3url);
             console.log("frontImage", frontImage);
-            // const frontImage = await createImageFromUrl("https://barrel-n-bond.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
+            // const frontImage = await createImageFromUrl("https://spirits-studio.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
             // const frontMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_front`);
             // console.log("frontMeshId", frontMeshId);
 
@@ -772,7 +773,7 @@ const Selector: FunctionComponent<{}> = () => {
           
           } else if(designSide === "back") {
             const backImage = await createImageFromUrl(designExport.s3url);
-            // const backImage = await createImageFromUrl("https://barrel-n-bond.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
+            // const backImage = await createImageFromUrl("https://spirits-studio.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
   
             // const backMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_back`);
             // console.log("backMeshId", backMeshId);
@@ -857,173 +858,183 @@ const Selector: FunctionComponent<{}> = () => {
         }
     }, [selectedAttribute, attributes]);
 
-    useEffect(() => {
-        if (selectedGroup) {
-            const camera = selectedGroup.cameraLocationId;
-            if (camera) setCamera(camera);
-        }
-    }, [selectedGroupId, selectedGroup, setCamera]);
-
-
+    // Guard camera updates to avoid infinite loops; normalise to string and use setCameraByName
+    // const lastCameraLocationIdRef = useRef<string | null>(null);
     // useEffect(() => {
-    //   const sendHeight = () => {
-    //     const h = Math.max(
-    //       document.documentElement.scrollHeight,
-    //       document.body?.scrollHeight || 0
-    //     );
-    //     window.parent.postMessage(
-    //       { customMessageType: 'CONFIG_IFRAME_HEIGHT', height: h },
-    //       '*'
-    //     );
+    //   const raw = (selectedGroup as any)?.cameraLocationId ?? null;
+    //   const cameraKey: string | null = raw == null ? null : String(raw);
+
+    //   if (cameraKey && lastCameraLocationIdRef.current !== cameraKey) {
+    //     lastCameraLocationIdRef.current = cameraKey;
+    //     try {
+    //       // set by name only; avoids numeric vs string overload/type issues
+    //       setCameraByName(cameraKey as unknown as string);
+    //     } catch (e) {
+    //       console.warn('[Configurator] Failed to set camera by name', cameraKey, e);
+    //     }
+    //   }
+    // }, [selectedGroupId, selectedGroup?.cameraLocationId, setCameraByName]);
+
+
+    // // useEffect(() => {
+    // //   const sendHeight = () => {
+    // //     const h = Math.max(
+    // //       document.documentElement.scrollHeight,
+    // //       document.body?.scrollHeight || 0
+    // //     );
+    // //     window.parent.postMessage(
+    // //       { customMessageType: 'CONFIG_IFRAME_HEIGHT', height: h },
+    // //       '*'
+    // //     );
+    // //   };
+
+    // //   // observe size changes
+    // //   const ro = new ResizeObserver(() => sendHeight());
+    // //   ro.observe(document.documentElement);
+
+    // //   // initial + on load
+    // //   sendHeight();
+    // //   window.addEventListener('load', sendHeight);
+
+    // //   // on orientation changes
+    // //   window.addEventListener('orientationchange', () => setTimeout(sendHeight, 250));
+
+    // //   return () => {
+    // //     ro.disconnect();
+    // //     window.removeEventListener('load', sendHeight);
+    // //   };
+    // // }, []);
+
+    // // === Camera animation: refs & helpers (top-level inside component) ===
+    // const camAbort = useRef<AbortController | null>(null);
+    // const lastCamRef = useRef<string | null>(null);
+    // const isAnimatingCam = useRef(false);
+    // const prevTourKeyRef = useRef<string | null>(null);
+
+    // const waitSceneIdle = useCallback(async (timeout = 1500, interval = 60) => {
+    //   const start = Date.now();
+    //   let stable = 0;
+    //   while (Date.now() - start < timeout) {
+    //     if (!isSceneLoading) {
+    //       stable++;
+    //       if (stable >= 2) break;
+    //     } else {
+    //       stable = 0;
+    //     }
+    //     await new Promise(r => setTimeout(r, interval));
+    //   }
+    //   await new Promise(r => requestAnimationFrame(() => r(null)));
+    // }, [isSceneLoading]);
+
+    // const moveCamera = useCallback(async (name: string) => {
+    //   try {
+    //     await setCameraByName(name);
+    //     lastCamRef.current = name;
+    //   } catch {}
+    // }, [setCameraByName]);
+
+    // const runCameraTour = useCallback(async (frames: string[], final: string, perFrameMs = 600) => {
+    //   // prevent concurrent tours
+    //   if (isAnimatingCam.current) return;
+    //   isAnimatingCam.current = true;
+
+    //   camAbort.current?.abort();
+    //   const ctrl = new AbortController();
+    //   camAbort.current = ctrl;
+
+    //   try {
+    //     // ensure visible motion if we're already on the final cam
+    //     const seq = [...frames];
+    //     if (lastCamRef.current && lastCamRef.current === final) {
+    //       const alt = frames.find(f => f !== final);
+    //       if (alt) seq.unshift(alt);
+    //     }
+
+    //     for (const f of seq) {
+    //       if (ctrl.signal.aborted) return;
+    //       await moveCamera(f);
+    //       await new Promise(r => setTimeout(r, perFrameMs));
+    //     }
+    //     if (!ctrl.signal.aborted) await moveCamera(final);
+    //   } finally {
+    //     if (camAbort.current === ctrl) camAbort.current = null;
+    //     isAnimatingCam.current = false;
+    //   }
+    // }, [moveCamera]);
+
+    // // Fire tour on step / bottle change, but debounce identical requests
+    // useEffect(() => {
+    //   if (!selectedStep) return;
+
+    //   const stepKey: 'bottle' | 'liquid' | 'closure' | 'label' =
+    //     selectedStepRole === 'bottle' ? 'bottle' :
+    //     selectedStepRole === 'liquid' ? 'liquid' :
+    //     selectedStepRole === 'closure' ? 'closure' : 'label';
+
+    //   // derive bottle key from current bottle selection (e.g. "Antica" -> "antica")
+    //   const bottleKey =
+    //     productObject.bottleSlug ||
+    //     bottleSlug ||
+    //     slugify(selections.bottle?.name || '');
+
+    //   // if no bottle yet, skip anim
+    //   if (!bottleKey) return;
+
+    //   // build dynamic camera names based on your convention
+    //   const cams: Record<'full_front'|'full_side'|'closure'|'label_front'|'label_back', string> = {
+    //     full_front: `${bottleKey}_full_front`,
+    //     full_side: `${bottleKey}_full_side`,
+    //     closure: `${bottleKey}_closure`,
+    //     label_front: `${bottleKey}_label_front`,
+    //     label_back: `${bottleKey}_label_back`,
     //   };
 
-    //   // observe size changes
-    //   const ro = new ResizeObserver(() => sendHeight());
-    //   ro.observe(document.documentElement);
+    //   // choose keyframe path for a short orbit feel per step
+    //   let frames: string[] = [];
+    //   let final: string = cams.full_front;
 
-    //   // initial + on load
-    //   sendHeight();
-    //   window.addEventListener('load', sendHeight);
+    //   if (stepKey === 'bottle') {
+    //     frames = ['wide_high_back'];
+    //     final = cams.full_front;
+    //   } else if (stepKey === 'liquid') {
+    //     frames = ['wide_low_front'];
+    //     final = cams.full_front;
+    //   } else if (stepKey === 'closure') {
+    //     frames = ['wide_high_front', 'wide_high_back'];
+    //     final = cams.label_front;
+    //   } else if (stepKey === 'label') {
+    //     frames = ['wide_high_front'];
+    //     const preferFront = !!labelAreas.front || !labelAreas.back;
+    //     final = preferFront ? cams.label_front : cams.label_back;
+    //   }
 
-    //   // on orientation changes
-    //   window.addEventListener('orientationchange', () => setTimeout(sendHeight, 250));
+    //   const tourKey = `${stepKey}|${bottleKey}|${final}`;
+    //   if (!isSceneLoading && prevTourKeyRef.current === tourKey) {
+    //     return; // identical request, skip to avoid jitter
+    //   }
+    //   prevTourKeyRef.current = tourKey;
 
-    //   return () => {
-    //     ro.disconnect();
-    //     window.removeEventListener('load', sendHeight);
-    //   };
-    // }, []);
+    //   (async () => {
+    //     await waitSceneIdle(1500, 60); // wait for model/meshes swap to settle
+    //     await runCameraTour(frames, final, 1000); // adjust per-frame ms as desired
+    //   })();
 
-    // === Camera animation: refs & helpers (top-level inside component) ===
-    const camAbort = useRef<AbortController | null>(null);
-    const lastCamRef = useRef<string | null>(null);
-    const isAnimatingCam = useRef(false);
-    const prevTourKeyRef = useRef<string | null>(null);
-
-    const waitSceneIdle = useCallback(async (timeout = 1500, interval = 60) => {
-      const start = Date.now();
-      let stable = 0;
-      while (Date.now() - start < timeout) {
-        if (!isSceneLoading) {
-          stable++;
-          if (stable >= 2) break;
-        } else {
-          stable = 0;
-        }
-        await new Promise(r => setTimeout(r, interval));
-      }
-      await new Promise(r => requestAnimationFrame(() => r(null)));
-    }, [isSceneLoading]);
-
-    const moveCamera = useCallback(async (name: string) => {
-      try {
-        await setCameraByName(name);
-        lastCamRef.current = name;
-      } catch {}
-    }, [setCameraByName]);
-
-    const runCameraTour = useCallback(async (frames: string[], final: string, perFrameMs = 600) => {
-      // prevent concurrent tours
-      if (isAnimatingCam.current) return;
-      isAnimatingCam.current = true;
-
-      camAbort.current?.abort();
-      const ctrl = new AbortController();
-      camAbort.current = ctrl;
-
-      try {
-        // ensure visible motion if we're already on the final cam
-        const seq = [...frames];
-        if (lastCamRef.current && lastCamRef.current === final) {
-          const alt = frames.find(f => f !== final);
-          if (alt) seq.unshift(alt);
-        }
-
-        for (const f of seq) {
-          if (ctrl.signal.aborted) return;
-          await moveCamera(f);
-          await new Promise(r => setTimeout(r, perFrameMs));
-        }
-        if (!ctrl.signal.aborted) await moveCamera(final);
-      } finally {
-        if (camAbort.current === ctrl) camAbort.current = null;
-        isAnimatingCam.current = false;
-      }
-    }, [moveCamera]);
-
-    // Fire tour on step / bottle change, but debounce identical requests
-    useEffect(() => {
-      if (!selectedStep) return;
-
-      const stepKey: 'bottle' | 'liquid' | 'closure' | 'label' =
-        selectedStepRole === 'bottle' ? 'bottle' :
-        selectedStepRole === 'liquid' ? 'liquid' :
-        selectedStepRole === 'closure' ? 'closure' : 'label';
-
-      // derive bottle key from current bottle selection (e.g. "Antica" -> "antica")
-      const bottleKey =
-        productObject.bottleSlug ||
-        bottleSlug ||
-        slugify(selections.bottle?.name || '');
-
-      // if no bottle yet, skip anim
-      if (!bottleKey) return;
-
-      // build dynamic camera names based on your convention
-      const cams: Record<'full_front'|'full_side'|'closure'|'label_front'|'label_back', string> = {
-        full_front: `${bottleKey}_full_front`,
-        full_side: `${bottleKey}_full_side`,
-        closure: `${bottleKey}_closure`,
-        label_front: `${bottleKey}_label_front`,
-        label_back: `${bottleKey}_label_back`,
-      };
-
-      // choose keyframe path for a short orbit feel per step
-      let frames: string[] = [];
-      let final: string = cams.full_front;
-
-      if (stepKey === 'bottle') {
-        frames = ['wide_high_back'];
-        final = cams.full_front;
-      } else if (stepKey === 'liquid') {
-        frames = ['wide_low_front'];
-        final = cams.full_front;
-      } else if (stepKey === 'closure') {
-        frames = ['wide_high_front', 'wide_high_back'];
-        final = cams.label_front;
-      } else if (stepKey === 'label') {
-        frames = ['wide_high_front'];
-        const preferFront = !!labelAreas.front || !labelAreas.back;
-        final = preferFront ? cams.label_front : cams.label_back;
-      }
-
-      const tourKey = `${stepKey}|${bottleKey}|${final}`;
-      if (!isSceneLoading && prevTourKeyRef.current === tourKey) {
-        return; // identical request, skip to avoid jitter
-      }
-      prevTourKeyRef.current = tourKey;
-
-      (async () => {
-        await waitSceneIdle(1500, 60); // wait for model/meshes swap to settle
-        await runCameraTour(frames, final, 1000); // adjust per-frame ms as desired
-      })();
-
-      return () => camAbort.current?.abort();
-    }, [
-      selectedStep,
-      selectedStep?.id,
-      selectedStepRole,
-      productObject.bottleSlug,
-      bottleSlug,
-      labelAreas.front,
-      labelAreas.front?.id,
-      labelAreas.back,
-      labelAreas.back?.id,
-      isSceneLoading,
-      runCameraTour,
-      waitSceneIdle,
-      selections.bottle?.name
-    ]);
+    //   return () => camAbort.current?.abort();
+    // }, [
+    //   selectedStep,
+    //   selectedStep?.id,
+    //   selectedStepRole,
+    //   productObject.bottleSlug,
+    //   bottleSlug,
+    //   labelAreas.front,
+    //   labelAreas.front?.id,
+    //   labelAreas.back,
+    //   labelAreas.back?.id,
+    //   isSceneLoading,
+    //   runCameraTour,
+    //   waitSceneIdle,
+    //   selections.bottle?.name
+    // ]);
 
     // --- Helper: find an option by exact name across ALL attributes in the current step ---
     const selectedOptionForNotes = useMemo(() => {
@@ -1188,7 +1199,7 @@ const Selector: FunctionComponent<{}> = () => {
                   <button
                     className="configurator-button"
                     disabled={!canDesign}
-                    title={!canDesign ? 'Select bottle, liquid, and closure first' : undefined}
+                    title={!canDesign ? 'Select liquid, and closure first' : undefined}
                     onClick={handleDesignWithAi}
                   >
                     Design with AI
@@ -1196,10 +1207,10 @@ const Selector: FunctionComponent<{}> = () => {
                   <button
                     className="configurator-button"
                     disabled={!canDesign}
-                    title={!canDesign ? 'Select bottle, liquid, and closure first' : undefined}
+                    title={!canDesign ? 'Select liquid, and closure first' : undefined}
                     onClick={handleUploadLabels}
                   >
-                    Upload Your Labels
+                    Upload Your Label
                   </button>
                 </ActionsCenter>
               </>
