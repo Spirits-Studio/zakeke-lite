@@ -403,11 +403,35 @@ const Selector: FunctionComponent<{}> = () => {
         });
       }
     }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
+    
+    // Speed Change
 
     // --- UI navigation state (must be declared before effects that depend on them) ---
+    // const [selectedGroupId, selectGroup] = useState<number | null>(null);
+    // const [selectedStepId, selectStep] = useState<number | null>(null);
+    // const [selectedAttributeId, selectAttribute] = useState<number | null>(null);
+
     const [selectedGroupId, selectGroup] = useState<number | null>(null);
     const [selectedStepId, selectStep] = useState<number | null>(null);
     const [selectedAttributeId, selectAttribute] = useState<number | null>(null);
+    
+    useEffect(() => {
+      if (!groups || groups.length === 0) return;
+      if (selectedGroupId !== null && selectedStepId !== null && selectedAttributeId !== null) return;
+
+      const bottleGroup = groups.find(g => g.name === 'Build Your Bottle') || groups[0];
+      const firstStep = bottleGroup.steps?.[0] || null;
+      const attrs = (firstStep || bottleGroup)?.attributes || [];
+      const firstEnabledAttr = attrs.find(a => a.enabled) || attrs[0];
+
+      React.startTransition?.(() => {
+        selectGroup(prev => (prev === null ? bottleGroup.id : prev));
+        if (firstStep) selectStep(prev => (prev === null ? firstStep.id : prev));
+        if (firstEnabledAttr) selectAttribute(prev => (prev === null ? firstEnabledAttr.id : prev));
+      });
+    }, [groups, selectedGroupId, selectedStepId, selectedAttributeId, selectGroup, selectStep, selectAttribute]);
+
+    // Speed Change
 
     const selectedGroup = groups.find(group => group.id === selectedGroupId);
     const selectedStep = selectedGroup?.steps.find(step => step.id === selectedStepId) ?? null;
@@ -524,7 +548,25 @@ const Selector: FunctionComponent<{}> = () => {
       miniLabel,
     ]);
 
+    // Speed Change
+    
     // Key that only changes when meaningful order fields change, closure id excluded to avoid transient updates during attribute switch
+    // const orderKey = [
+    //   product?.sku ?? '',
+    //   String(price ?? ''),
+    //   selections.bottle?.id ?? 0,
+    //   selections.liquid?.id ?? 0,
+    //   /* closure id excluded to avoid transient updates during attribute switch */
+    //   selections.label?.id ?? 0,
+    // ].join('|');
+    // useEffect(() => {
+    //   setFromSelections({
+    //     selections,
+    //     sku: product?.sku ?? null,
+    //     price,
+    //   });
+    // }, [orderKey, setFromSelections, selections, product?.sku, price]);
+
     const orderKey = [
       product?.sku ?? '',
       String(price ?? ''),
@@ -533,13 +575,35 @@ const Selector: FunctionComponent<{}> = () => {
       /* closure id excluded to avoid transient updates during attribute switch */
       selections.label?.id ?? 0,
     ].join('|');
+    // Debounce cross-window/store update to avoid bursts during initialisation
+    const debouncedSetFromSelectionsTimer = useRef<number | null>(null);
     useEffect(() => {
-      setFromSelections({
-        selections,
-        sku: product?.sku ?? null,
-        price,
-      });
-    }, [orderKey, setFromSelections, selections, product?.sku, price]);
+      // clear any pending run
+      if (debouncedSetFromSelectionsTimer.current) {
+        clearTimeout(debouncedSetFromSelectionsTimer.current);
+        debouncedSetFromSelectionsTimer.current = null;
+      }
+
+      // schedule the update; adjust delay to taste (0 = microtask, 100–200ms = debounce)
+      debouncedSetFromSelectionsTimer.current = window.setTimeout(() => {
+        setFromSelections({
+          selections,
+          sku: product?.sku ?? null,
+          price,
+        });
+      }, 150);
+
+      // cleanup on dep change/unmount
+      return () => {
+        if (debouncedSetFromSelectionsTimer.current) {
+          clearTimeout(debouncedSetFromSelectionsTimer.current);
+          debouncedSetFromSelectionsTimer.current = null;
+        }
+      };
+      // Only re-run when the meaningful order fingerprint changes
+    }, [orderKey]);
+
+    // Speed Change
 
     const hasBottleSelection = !!miniBottle && miniBottle.name !== 'No Selection';
     const hasLiquidSelection = !!miniLiquid && miniLiquid.name !== 'No Selection';
@@ -598,14 +662,29 @@ const Selector: FunctionComponent<{}> = () => {
       [product, productObject.bottleSlug, bottleSlug]
     );
 
-    const visibleAreas = useMemo(() => {
-      const areas = product?.areas ?? [];
-      if (isSceneLoading || !areas.length || typeof isAreaVisible !== 'function') return [];
+    // Speed Change
 
+    // const visibleAreas = useMemo(() => {
+    //   const areas = product?.areas ?? [];
+    //   if (isSceneLoading || !areas.length || typeof isAreaVisible !== 'function') return [];
+
+    //   return areas.filter(a => {
+    //     try { return isAreaVisible(a.id); } catch { return false; }
+    //   });
+    // }, [isSceneLoading, product?.areas, isAreaVisible]);
+
+    const areas = product?.areas ?? [];
+    const areaKey = areas.map(a => a.id).join(',');
+
+    const visibleAreas = useMemo(() => {
+      if (isSceneLoading || !areas.length || typeof isAreaVisible !== 'function') return [];
       return areas.filter(a => {
         try { return isAreaVisible(a.id); } catch { return false; }
       });
-    }, [isSceneLoading, product?.areas, isAreaVisible]);
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [areaKey, isSceneLoading, isAreaVisible]);
+
+    // Speed Change
 
     const labelAreas = useMemo(() => {
       const byName = (needle: string) =>
@@ -889,47 +968,48 @@ const Selector: FunctionComponent<{}> = () => {
       return () => window.removeEventListener('message', onMsg);
     }, [allowedParentOrigins, createImageFromUrl, addItemImage, items, productObject, product?.sku, setFromUploadDesign, findLabelArea]);
 
+    // Speed Change - No need to clear items
 
     // --- Clear items when bottle changes ---
-    const prevBottleIdRef = useRef<number | null>(null);
+    // const prevBottleIdRef = useRef<number | null>(null);
 
-    const clearAllItems = useCallback(async () => {
-      if (typeof removeItem !== 'function') {
-        console.warn('[Configurator] removeItem not available from useZakeke; cannot clear items on bottle change.');
-        return;
-      }
-      const live = (Array.isArray(items) ? items : []).filter((it: any) => !it?.deleted);
-      for (const it of live) {
-        try {
-          await removeItem(it.guid);
-        } catch (err) {
-          console.warn('[Configurator] Failed to remove item', it?.guid, err);
-        }
-      }
-    }, [items, removeItem]);
+    // const clearAllItems = useCallback(async () => {
+    //   if (typeof removeItem !== 'function') {
+    //     console.warn('[Configurator] removeItem not available from useZakeke; cannot clear items on bottle change.');
+    //     return;
+    //   }
+    //   const live = (Array.isArray(items) ? items : []).filter((it: any) => !it?.deleted);
+    //   for (const it of live) {
+    //     try {
+    //       await removeItem(it.guid);
+    //     } catch (err) {
+    //       console.warn('[Configurator] Failed to remove item', it?.guid, err);
+    //     }
+    //   }
+    // }, [items, removeItem]);
 
-    useEffect(() => {
-      const currentBottleId = (bottleSel?.id ?? miniBottle?.id ?? null) as number | null;
-      const prev = prevBottleIdRef.current;
+    // useEffect(() => {
+    //   const currentBottleId = (bottleSel?.id ?? miniBottle?.id ?? null) as number | null;
+    //   const prev = prevBottleIdRef.current;
 
-      // Avoid clearing on first mount; only clear when actual bottle id changes
-      if (prev !== null && currentBottleId !== null && currentBottleId !== prev) {
-        clearAllItems(); // fire-and-forget
-      }
-      prevBottleIdRef.current = currentBottleId;
-    }, [bottleSel?.id, miniBottle?.id, clearAllItems]);
+    //   // Avoid clearing on first mount; only clear when actual bottle id changes
+    //   if (prev !== null && currentBottleId !== null && currentBottleId !== prev) {
+    //     clearAllItems(); // fire-and-forget
+    //   }
+    //   prevBottleIdRef.current = currentBottleId;
+    // }, [bottleSel?.id, miniBottle?.id, clearAllItems]);
 
-    // Clear any previously attached label items on first entry to the Label/Design step
-    const didClearOnLabelRef = useRef(false);
-    useEffect(() => {
-      const onLabelStepNow = selectedStep?.id != null && selectedStep?.id === labelStepId;
-      if (onLabelStepNow && !didClearOnLabelRef.current) {
-        didClearOnLabelRef.current = true;
-        clearAllItems();
-      }
-    }, [selectedStep?.id, labelStepId, clearAllItems]);
+    // // Clear any previously attached label items on first entry to the Label/Design step
+    // const didClearOnLabelRef = useRef(false);
+    // useEffect(() => {
+    //   const onLabelStepNow = selectedStep?.id != null && selectedStep?.id === labelStepId;
+    //   if (onLabelStepNow && !didClearOnLabelRef.current) {
+    //     didClearOnLabelRef.current = true;
+    //     clearAllItems();
+    //   }
+    // }, [selectedStep?.id, labelStepId, clearAllItems]);
 
-
+    // Speed Change
 
     useEffect(() => {
         if (!selectedAttribute && attributes.length > 0) {
