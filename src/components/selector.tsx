@@ -5,7 +5,7 @@ import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice,
 // import { List, StepListItem, , ListItemImage } from './list';
 import { optionNotes } from '../data/option-notes';
 // import { ClipLoader } from 'react-loader-spinner';
-import { ClipLoader } from 'react-spinners';
+import ClipLoader from 'react-spinners/ClipLoader';
 
 import { useOrderStore } from '../state/orderStore';
 

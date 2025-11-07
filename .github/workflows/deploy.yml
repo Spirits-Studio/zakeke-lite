@@ -21,7 +21,8 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      - name: Install dependencies (lockfile just updated)
+        run: npm install
       - run: CI=false npm run build
       - run: echo "create.spiritsstudio.co.uk" > build/CNAME
       - run: touch build/.nojekyll

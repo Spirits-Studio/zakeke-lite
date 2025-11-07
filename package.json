@@ -18,6 +18,7 @@
     "copy": "cpy node_modules/zakeke-configurator-react/dist/globals*.js public/",
     "start": "npm run copy && craco start",
     "build": "npm run copy && cross-env GENERATE_SOURCEMAP=false craco build",
+    "build:debug": "npm run copy && cross-env GENERATE_SOURCEMAP=true craco build",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
     "eject": "npm run copy && react-scripts eject",
