@@ -928,6 +928,8 @@ const Selector: FunctionComponent<{}> = () => {
                   'productSku': product?.sku ?? null,
                 }
               }, '*');
+            } else {
+              console.warn("Missing info to add front label", { frontImage, frontAreaId });
             }
           
           } else if(designSide === "back") {
@@ -966,48 +968,6 @@ const Selector: FunctionComponent<{}> = () => {
       return () => window.removeEventListener('message', onMsg);
     }, [allowedParentOrigins, createImageFromUrl, addItemImage, items, productObject, product?.sku, setFromUploadDesign, findLabelArea]);
 
-    // Speed Change - No need to clear items
-
-    // --- Clear items when bottle changes ---
-    // const prevBottleIdRef = useRef<number | null>(null);
-
-    // const clearAllItems = useCallback(async () => {
-    //   if (typeof removeItem !== 'function') {
-    //     console.warn('[Configurator] removeItem not available from useZakeke; cannot clear items on bottle change.');
-    //     return;
-    //   }
-    //   const live = (Array.isArray(items) ? items : []).filter((it: any) => !it?.deleted);
-    //   for (const it of live) {
-    //     try {
-    //       await removeItem(it.guid);
-    //     } catch (err) {
-    //       console.warn('[Configurator] Failed to remove item', it?.guid, err);
-    //     }
-    //   }
-    // }, [items, removeItem]);
-
-    // useEffect(() => {
-    //   const currentBottleId = (bottleSel?.id ?? miniBottle?.id ?? null) as number | null;
-    //   const prev = prevBottleIdRef.current;
-
-    //   // Avoid clearing on first mount; only clear when actual bottle id changes
-    //   if (prev !== null && currentBottleId !== null && currentBottleId !== prev) {
-    //     clearAllItems(); // fire-and-forget
-    //   }
-    //   prevBottleIdRef.current = currentBottleId;
-    // }, [bottleSel?.id, miniBottle?.id, clearAllItems]);
-
-    // // Clear any previously attached label items on first entry to the Label/Design step
-    // const didClearOnLabelRef = useRef(false);
-    // useEffect(() => {
-    //   const onLabelStepNow = selectedStep?.id != null && selectedStep?.id === labelStepId;
-    //   if (onLabelStepNow && !didClearOnLabelRef.current) {
-    //     didClearOnLabelRef.current = true;
-    //     clearAllItems();
-    //   }
-    // }, [selectedStep?.id, labelStepId, clearAllItems]);
-
-    // Speed Change
 
     useEffect(() => {
         if (!selectedAttribute && attributes.length > 0) {
@@ -1018,6 +978,7 @@ const Selector: FunctionComponent<{}> = () => {
         }
     }, [selectedAttribute, attributes]);
 
+    
     // Guard camera updates to avoid infinite loops; normalise to string and use setCameraByName
     const lastCameraLocationIdRef = useRef<string | null>(null);
     useEffect(() => {
@@ -1034,36 +995,6 @@ const Selector: FunctionComponent<{}> = () => {
         }
       }
     }, [selectedGroupId, selectedGroup?.cameraLocationId, setCameraByName]);
-
-
-    // useEffect(() => {
-    //   const sendHeight = () => {
-    //     const h = Math.max(
-    //       document.documentElement.scrollHeight,
-    //       document.body?.scrollHeight || 0
-    //     );
-    //     window.parent.postMessage(
-    //       { customMessageType: 'CONFIG_IFRAME_HEIGHT', height: h },
-    //       '*'
-    //     );
-    //   };
-
-    // //   // observe size changes
-    // //   const ro = new ResizeObserver(() => sendHeight());
-    // //   ro.observe(document.documentElement);
-
-    // //   // initial + on load
-    // //   sendHeight();
-    // //   window.addEventListener('load', sendHeight);
-
-    // //   // on orientation changes
-    // //   window.addEventListener('orientationchange', () => setTimeout(sendHeight, 250));
-
-    // //   return () => {
-    // //     ro.disconnect();
-    // //     window.removeEventListener('load', sendHeight);
-    // //   };
-    // // }, []);
 
     // // === Camera animation: refs & helpers (top-level inside component) ===
     const camAbort = useRef<AbortController | null>(null);
