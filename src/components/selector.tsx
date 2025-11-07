@@ -5,7 +5,56 @@ import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice,
 // import { List, StepListItem, , ListItemImage } from './list';
 import { optionNotes } from '../data/option-notes';
 import { TailSpin } from 'react-loader-spinner';
+
 import { useOrderStore } from '../state/orderStore';
+
+// ---- Safari / legacy polyfills & diagnostics ----
+// Polyfill Array.prototype.flatMap for older Safari builds
+if (!Array.prototype.flatMap) {
+  // eslint-disable-next-line no-extend-native
+  Object.defineProperty(Array.prototype, 'flatMap', {
+    configurable: true,
+    writable: true,
+    value: function flatMap<T, U>(this: T[], mapper: (v: T, i: number, a: T[]) => U | U[]): U[] {
+      const out: any[] = [];
+      for (let i = 0; i < this.length; i += 1) {
+        if (i in this) {
+          const r = mapper(this[i], i, this);
+          if (Array.isArray(r)) out.push.apply(out, r);
+          else out.push(r);
+        }
+      }
+      return out as U[];
+    }
+  });
+}
+
+// Light shims frequently missing on Safari versions we still encounter
+if (!('requestIdleCallback' in window)) {
+  // @ts-ignore
+  window.requestIdleCallback = (cb: any) => setTimeout(() => cb(Date.now()), 1);
+}
+if (!('structuredClone' in window)) {
+  // @ts-ignore
+  window.structuredClone = (o: any) => JSON.parse(JSON.stringify(o));
+}
+
+// Robust Safari detection (exclude Chrome/iOS Chrome/Android UA overlays)
+const __IS_SAFARI__ = typeof navigator !== 'undefined' && /safari/i.test(navigator.userAgent) && !/chrome|crios|android/i.test(navigator.userAgent);
+
+// Early environment diagnostics (safe to keep in production; helps field debugging)
+try {
+  const webglSupport = (() => {
+    try {
+      const c = document.createElement('canvas');
+      return !!(c.getContext('webgl') || c.getContext('experimental-webgl'));
+    } catch { return false; }
+  })();
+  let storageOk = true;
+  try { localStorage.setItem('__t','1'); localStorage.removeItem('__t'); } catch { storageOk = false; }
+  // eslint-disable-next-line no-console
+  console.log('[ENV]', { safari: __IS_SAFARI__, ua: navigator.userAgent, webglSupport, storageOk });
+} catch {}
 
 
 const slugify = (value: string) =>
@@ -103,7 +152,7 @@ const Selector: FunctionComponent<{}> = () => {
         // restoreMeshVisibility,
     } = useZakeke();
 
-    console.log("items", items)
+    if (process.env.NODE_ENV !== 'production') console.log('[items]', Array.isArray(items) ? items.length : 'n/a');
 
     const allowedParentOrigins = useMemo(() => {
       const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk'])
@@ -307,15 +356,33 @@ const Selector: FunctionComponent<{}> = () => {
     const readyRetryTimer1 = useRef<number | null>(null);
     const readyRetryTimer2 = useRef<number | null>(null);
 
+    // Safari-specific soft fallback: if core data (groups/product/price) arrive but viewer never flips,
+    // we allow the UI to progress after a grace period to avoid stalls.
+    const [safariGraceReady, setSafariGraceReady] = useState(false);
+    useEffect(() => {
+      if (!__IS_SAFARI__) return;
+      const t = window.setTimeout(() => setSafariGraceReady(true), 6000);
+      return () => window.clearTimeout(t);
+    }, []);
+
     // Parent window should ACK with:
     // window.postMessage({ customMessageType: 'firstRenderAck', meta: { correlationId: <value from our firstRender.meta.correlationId> } }, '*');
     useEffect(() => {
       // Compute readiness across multiple signals
       const assetsOk = isAssetsLoading === false && isSceneLoading === false;
-      const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
+      const viewerOk = typeof isViewerReady === 'boolean'
+        ? (__IS_SAFARI__ ? isViewerReady === true /* fail-closed here; gating relax is handled below */ : isViewerReady === true)
+        : true;
       const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
       const pricedOk = price != null; // Zakeke has calculated price at least once
-      const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
+      let isReady = assetsOk && viewerOk && basicsOk && pricedOk;
+      if (__IS_SAFARI__ && !isReady) {
+        // If everything except viewer is ready, and grace timer expired, treat as ready.
+        const almostReady = assetsOk && basicsOk && pricedOk && !viewerOk;
+        if (almostReady && safariGraceReady) {
+          isReady = true;
+        }
+      }
 
       // Debug: show gate state on every change
       console.log('[READY EFFECT]', { assetsOk, viewerOk, basicsOk, pricedOk, isReady, alreadyPosted: firstRenderPostedRef.current });
@@ -353,7 +420,7 @@ const Selector: FunctionComponent<{}> = () => {
         if (readyRetryTimer1.current) { clearTimeout(readyRetryTimer1.current as any); readyRetryTimer1.current = null; }
         if (readyRetryTimer2.current) { clearTimeout(readyRetryTimer2.current as any); readyRetryTimer2.current = null; }
       };
-    }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
+    }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups, safariGraceReady]);
 
     // DEBUG: Log readiness flags and which condition is blocking firstRender
     const prevReadySnapshotRef = useRef<null | {
@@ -366,10 +433,18 @@ const Selector: FunctionComponent<{}> = () => {
 
     useEffect(() => {
       const assetsOk = isAssetsLoading === false && isSceneLoading === false;
-      const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
+      const viewerOk = typeof isViewerReady === 'boolean'
+        ? (__IS_SAFARI__ ? isViewerReady === true : isViewerReady === true)
+        : true;
       const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
       const pricedOk = price != null;
-      const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
+      let isReady = assetsOk && viewerOk && basicsOk && pricedOk;
+      if (__IS_SAFARI__ && !isReady) {
+        const almostReady = assetsOk && basicsOk && pricedOk && !viewerOk;
+        if (almostReady && safariGraceReady) {
+          isReady = true;
+        }
+      }
 
       const prev = prevReadySnapshotRef.current;
       const changed =
@@ -395,13 +470,14 @@ const Selector: FunctionComponent<{}> = () => {
           basicsOk,
           pricedOk,
           isReady,
+          safariGraceReady,
           price,
           sku: product?.sku ?? null,
           groupsCount: Array.isArray(groups) ? groups.length : null,
           blocks,
         });
       }
-    }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
+    }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups, safariGraceReady]);
     
     // Speed Change
 
