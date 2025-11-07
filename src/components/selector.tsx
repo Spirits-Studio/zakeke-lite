@@ -894,6 +894,7 @@ const Selector: FunctionComponent<{}> = () => {
           const targetArea = findLabelArea(designSide);
           console.log("targetArea", targetArea);
           console.log("items before adding label", items);
+          console.log("groups before adding label", groups);
           if (!targetArea) {
             console.warn('No area found', { designSide, bottleSlug: productObject?.bottleSlug ?? null });
             return;
@@ -909,10 +910,11 @@ const Selector: FunctionComponent<{}> = () => {
             const frontAreaId = targetArea.id;
             console.log("frontAreaId", frontAreaId);
 
-            console.log("items after adding label", items);
             
             if (frontImage?.imageID && frontAreaId) {
               await addItemImage(frontImage.imageID, frontAreaId);
+              console.log("items after adding label", items);
+              console.log("groups after adding label", groups);
 
               window.parent.postMessage({
                 customMessageType: 'labelAdded',
