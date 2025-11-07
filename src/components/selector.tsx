@@ -310,164 +310,99 @@ const Selector: FunctionComponent<{}> = () => {
 
     // Parent window should ACK with:
     // window.postMessage({ customMessageType: 'firstRenderAck', meta: { correlationId: <value from our firstRender.meta.correlationId> } }, '*');
-    // useEffect(() => {
-    //   // Compute readiness across multiple signals
-    //   const assetsOk = isAssetsLoading === false && isSceneLoading === false;
-    //   const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
-    //   const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
-    //   const pricedOk = price != null; // Zakeke has calculated price at least once
-    //   const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
+    useEffect(() => {
+      // Compute readiness across multiple signals
+      const assetsOk = isAssetsLoading === false && isSceneLoading === false;
+      const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
+      const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
+      const pricedOk = price != null; // Zakeke has calculated price at least once
+      const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
 
-    //   // Debug: show gate state on every change
-    //   console.log('[READY EFFECT]', { assetsOk, viewerOk, basicsOk, pricedOk, isReady, alreadyPosted: firstRenderPostedRef.current });
+      // Debug: show gate state on every change
+      console.log('[READY EFFECT]', { assetsOk, viewerOk, basicsOk, pricedOk, isReady, alreadyPosted: firstRenderPostedRef.current });
 
-    //   if (isReady && !firstRenderPostedRef.current) {
-    //     firstRenderPostedRef.current = true;
+      if (isReady && !firstRenderPostedRef.current) {
+        firstRenderPostedRef.current = true;
 
-    //     const correlationId = readyMsgIdRef.current;
+        const correlationId = readyMsgIdRef.current;
 
-    //     const basePayload = { customMessageType: 'firstRender', message: { closeLoadingScreen: true }, meta: { iframeOrigin: window.location.origin, correlationId } } as const;
+        const basePayload = { customMessageType: 'firstRender', message: { closeLoadingScreen: true }, meta: { iframeOrigin: window.location.origin, correlationId } } as const;
 
-    //     const send = (stage: 'immediate' | 'retry1' | 'retry2') => {
-    //       try {
-    //         window.parent?.postMessage(basePayload, '*');
-    //         window.top?.postMessage(basePayload, '*');
-    //         console.log('[READY EFFECT] postMessage:', stage, basePayload.meta);
-    //       } catch (e) {
-    //         console.error('[READY EFFECT] postMessage failed', stage, e);
-    //       }
-    //     };
+        const send = (stage: 'immediate' | 'retry1' | 'retry2') => {
+          try {
+            window.parent?.postMessage(basePayload, '*');
+            window.top?.postMessage(basePayload, '*');
+            console.log('[READY EFFECT] postMessage:', stage, basePayload.meta);
+          } catch (e) {
+            console.error('[READY EFFECT] postMessage failed', stage, e);
+          }
+        };
 
-    //     // 1) Send now
-    //     send('immediate');
+        // 1) Send now
+        send('immediate');
 
-    //     // 2) Schedule up to 2 retries unless ACK arrives
-    //     readyRetryTimer1.current = window.setTimeout(() => {
-    //       if (!readyAckedRef.current) send('retry1');
-    //     }, 300);
+        // 2) Schedule up to 2 retries unless ACK arrives
+        readyRetryTimer1.current = window.setTimeout(() => {
+          if (!readyAckedRef.current) send('retry1');
+        }, 300);
 
-    //     readyRetryTimer2.current = window.setTimeout(() => {
-    //       if (!readyAckedRef.current) send('retry2');
-    //     }, 1000);
-    //   }
-    //   return () => {
-    //     if (readyRetryTimer1.current) { clearTimeout(readyRetryTimer1.current as any); readyRetryTimer1.current = null; }
-    //     if (readyRetryTimer2.current) { clearTimeout(readyRetryTimer2.current as any); readyRetryTimer2.current = null; }
-    //   };
-    // }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
+        readyRetryTimer2.current = window.setTimeout(() => {
+          if (!readyAckedRef.current) send('retry2');
+        }, 1000);
+      }
+      return () => {
+        if (readyRetryTimer1.current) { clearTimeout(readyRetryTimer1.current as any); readyRetryTimer1.current = null; }
+        if (readyRetryTimer2.current) { clearTimeout(readyRetryTimer2.current as any); readyRetryTimer2.current = null; }
+      };
+    }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
 
-    // // DEBUG: Log readiness flags and which condition is blocking firstRender
-    // const prevReadySnapshotRef = useRef<null | {
-    //   assetsOk: boolean;
-    //   viewerOk: boolean;
-    //   basicsOk: boolean;
-    //   pricedOk: boolean;
-    //   isReady: boolean;
-    // }>(null);
-
-    // useEffect(() => {
-    //   const assetsOk = isAssetsLoading === false && isSceneLoading === false;
-    //   const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
-    //   const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
-    //   const pricedOk = price != null;
-    //   const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
-
-    //   const prev = prevReadySnapshotRef.current;
-    //   const changed =
-    //     !prev ||
-    //     prev.assetsOk !== assetsOk ||
-    //     prev.viewerOk !== viewerOk ||
-    //     prev.basicsOk !== basicsOk ||
-    //     prev.pricedOk !== pricedOk ||
-    //     prev.isReady !== isReady;
-
-    //   if (changed) {
-    //     prevReadySnapshotRef.current = { assetsOk, viewerOk, basicsOk, pricedOk, isReady };
-    //     const blocks: string[] = [];
-    //     if (!assetsOk) blocks.push(`assetsOk=false (isAssetsLoading=${String(isAssetsLoading)} isSceneLoading=${String(isSceneLoading)})`);
-    //     if (!viewerOk) blocks.push('viewerOk=false (isViewerReady=false)');
-    //     if (!basicsOk) blocks.push(`basicsOk=false (product=${!!product}, groups=${Array.isArray(groups) ? groups.length : 'n/a'})`);
-    //     if (!pricedOk) blocks.push('pricedOk=false (price is null)');
-
-    //     // single compact log line for grepability
-    //     console.log('[ZAKEKE READY DEBUG]', {
-    //       assetsOk,
-    //       viewerOk,
-    //       basicsOk,
-    //       pricedOk,
-    //       isReady,
-    //       price,
-    //       sku: product?.sku ?? null,
-    //       groupsCount: Array.isArray(groups) ? groups.length : null,
-    //       blocks,
-    //     });
-    //   }
-    // }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
+    // DEBUG: Log readiness flags and which condition is blocking firstRender
+    const prevReadySnapshotRef = useRef<null | {
+      assetsOk: boolean;
+      viewerOk: boolean;
+      basicsOk: boolean;
+      pricedOk: boolean;
+      isReady: boolean;
+    }>(null);
 
     useEffect(() => {
-      const getRoot = () => document.getElementById('root') as HTMLElement | null;
+      const assetsOk = isAssetsLoading === false && isSceneLoading === false;
+      const viewerOk = typeof isViewerReady === 'boolean' ? isViewerReady === true : true;
+      const basicsOk = !!product && Array.isArray(groups) && groups.length > 0;
+      const pricedOk = price != null;
+      const isReady = assetsOk && viewerOk && basicsOk && pricedOk;
 
-      const report = (stage: string) => {
-        const root = getRoot();
-        const childCount = root?.childElementCount ?? 0;
-        const hasNodes = !!root && (childCount > 0 || (root.textContent || '').trim().length > 0);
-        console.log('[IFRAME ROOT]', { stage, readyState: document.readyState, hasRoot: !!root, childCount, hasNodes });
+      const prev = prevReadySnapshotRef.current;
+      const changed =
+        !prev ||
+        prev.assetsOk !== assetsOk ||
+        prev.viewerOk !== viewerOk ||
+        prev.basicsOk !== basicsOk ||
+        prev.pricedOk !== pricedOk ||
+        prev.isReady !== isReady;
 
-        // Optional: tell parent once content exists
-        if (hasNodes) {
-          window.parent?.postMessage(
-            { customMessageType: 'firstRender', message: { closeLoadingScreen: true } },
-            '*'
-          );
-        }
-      };
+      if (changed) {
+        prevReadySnapshotRef.current = { assetsOk, viewerOk, basicsOk, pricedOk, isReady };
+        const blocks: string[] = [];
+        if (!assetsOk) blocks.push(`assetsOk=false (isAssetsLoading=${String(isAssetsLoading)} isSceneLoading=${String(isSceneLoading)})`);
+        if (!viewerOk) blocks.push('viewerOk=false (isViewerReady=false)');
+        if (!basicsOk) blocks.push(`basicsOk=false (product=${!!product}, groups=${Array.isArray(groups) ? groups.length : 'n/a'})`);
+        if (!pricedOk) blocks.push('pricedOk=false (price is null)');
 
-      // 1) Initial sync checks
-      report('effect-mount');
-      if (document.readyState === 'complete' || document.readyState === 'interactive') {
-        report('readyState-initial');
-      } else {
-        const onDom = () => report('DOMContentLoaded');
-        document.addEventListener('DOMContentLoaded', onDom, { once: true });
-      }
-
-      // 2) Observe #root until it has content
-      const root = getRoot();
-      let mo: MutationObserver | null = null;
-
-      const ensureObserver = () => {
-        const r = getRoot();
-        if (!r) return;
-        mo = new MutationObserver(() => {
-          const childCount = r.childElementCount;
-          if (childCount > 0 || (r.textContent || '').trim().length > 0) {
-            report('mutation-has-content');
-            mo?.disconnect();
-            mo = null;
-          }
+        // single compact log line for grepability
+        console.log('[ZAKEKE READY DEBUG]', {
+          assetsOk,
+          viewerOk,
+          basicsOk,
+          pricedOk,
+          isReady,
+          price,
+          sku: product?.sku ?? null,
+          groupsCount: Array.isArray(groups) ? groups.length : null,
+          blocks,
         });
-        mo.observe(r, { childList: true, subtree: true, characterData: true });
-      };
-
-      if (root) {
-        ensureObserver();
-      } else {
-        // If #root isn’t in DOM yet, watch the body for its arrival
-        const boot = new MutationObserver(() => {
-          const r = getRoot();
-          if (r) {
-            report('root-attached');
-            ensureObserver();
-            boot.disconnect();
-          }
-        });
-        boot.observe(document.body, { childList: true, subtree: true });
-        // Clean up boot observer on unmount
-        return () => boot.disconnect();
       }
-
-      return () => mo?.disconnect();
-    }, []);
+    }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups]);
 
     // --- UI navigation state (must be declared before effects that depend on them) ---
     const [selectedGroupId, selectGroup] = useState<number | null>(null);
