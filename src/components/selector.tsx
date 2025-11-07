@@ -87,7 +87,6 @@ const Selector: FunctionComponent<{}> = () => {
         groups,
         selectOption,
         addToCart,
-        setCamera,
         setCameraByName,
         product,
         items,
@@ -763,15 +762,56 @@ const Selector: FunctionComponent<{}> = () => {
       [findLabelArea]
     );
 
+    // // Checks both front and back label areas (if defined) have at least one active item assigned
+    // const labelsPopulated = useMemo(() => {
+    //   const frontReady =
+    //     frontLabelAreaId == null ||
+    //     activeItems.some(item => resolveItemAreaId(item) === frontLabelAreaId);
+    //   const backReady =
+    //     backLabelAreaId == null ||
+    //     activeItems.some(item => resolveItemAreaId(item) === backLabelAreaId);
+    //   return frontReady && backReady;
+    // }, [activeItems, frontLabelAreaId, backLabelAreaId, resolveItemAreaId]);
+    
+    // Checks front label only
     const labelsPopulated = useMemo(() => {
       const frontReady =
         frontLabelAreaId == null ||
         activeItems.some(item => resolveItemAreaId(item) === frontLabelAreaId);
-      const backReady =
-        backLabelAreaId == null ||
-        activeItems.some(item => resolveItemAreaId(item) === backLabelAreaId);
-      return frontReady && backReady;
-    }, [activeItems, frontLabelAreaId, backLabelAreaId, resolveItemAreaId]);
+      
+      return frontReady;
+    }, [activeItems, frontLabelAreaId, resolveItemAreaId]);
+
+    const labelsPopulatedRef = useRef(labelsPopulated);
+    useEffect(() => {
+      labelsPopulatedRef.current = labelsPopulated;
+    }, [labelsPopulated]);
+    const waitForLabelsPopulated = useCallback(
+      async (timeoutMs = 5000, pollMs = 120) => {
+        if (labelsPopulatedRef.current) return true;
+        return new Promise<boolean>((resolve) => {
+          const start = Date.now();
+          const tick = () => {
+            if (labelsPopulatedRef.current) {
+              resolve(true);
+              return;
+            }
+            if (Date.now() - start >= timeoutMs) {
+              resolve(false);
+              return;
+            }
+            setTimeout(tick, pollMs);
+          };
+          tick();
+        });
+      },
+      []
+    );
+    const markDomLabelReady = useCallback((side: 'front' | 'back') => {
+      if (typeof document === 'undefined') return;
+      const attr = side === 'front' ? 'data-front-label-ready' : 'data-back-label-ready';
+      document.body?.setAttribute(attr, 'true');
+    }, []);
 
     // Invisible warning helper (logs and stores a message for later UX surfacing)
     const setWarning = (msg: string) => {
@@ -915,8 +955,13 @@ const Selector: FunctionComponent<{}> = () => {
             
             if (frontImage?.imageID && frontAreaId) {
               await addItemImage(frontImage.imageID, frontAreaId);
-              console.log("items after adding label", items);
-              console.log("groups after adding label", groups);
+
+              const populated = await waitForLabelsPopulated();
+              if (!populated) {
+                console.warn('Timed out waiting for front label to populate.');
+                return;
+              }
+              markDomLabelReady('front');
 
               window.parent.postMessage({
                 customMessageType: 'labelAdded',
@@ -950,6 +995,15 @@ const Selector: FunctionComponent<{}> = () => {
             if (backImage?.imageID && backAreaId) {
               await addItemImage(backImage.imageID, backAreaId);
 
+              // Turn on the front and back label labelsPopulated check
+              const populated = await waitForLabelsPopulated();
+              if (!populated) {
+                console.warn('Timed out waiting for back label to populate.');
+                return;
+              }
+              markDomLabelReady('back');
+
+
               window.parent.postMessage({
                 customMessageType: 'labelAdded',
                 message: {
@@ -970,7 +1024,8 @@ const Selector: FunctionComponent<{}> = () => {
       };
       window.addEventListener('message', onMsg);
       return () => window.removeEventListener('message', onMsg);
-    }, [allowedParentOrigins, createImageFromUrl, addItemImage, items, productObject, product?.sku, setFromUploadDesign, findLabelArea]);
+    }, [allowedParentOrigins, groups, createImageFromUrl, addItemImage, items, productObject, product?.sku, setFromUploadDesign, findLabelArea, waitForLabelsPopulated, markDomLabelReady]);
+
 
 
     useEffect(() => {
