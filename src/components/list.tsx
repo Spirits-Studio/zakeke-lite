@@ -107,6 +107,13 @@ export const CartButton = styled.button`
     transform: translateY(0);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   }
+
+  &:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
 `;
 
 export const RotateNotice = styled.div`
@@ -151,18 +158,6 @@ export const Container = styled.div`
 `;
 
 
-export const PriceWrapper = styled.div`
-  position: sticky;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  z-index: 10;
-  padding: 16px 32px;
-  border-top: 1px solid #ccc;
-  text-align: left;
-  box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.1);
-`;
-
 export const NotesWrapper = styled.div`
   margin-top: 24px;
   padding: 16px;
@@ -197,10 +192,6 @@ export const CartBarInner = styled.div`
   gap: 12px;
 `;
 
-export const CartPrice = styled.h3`
-  margin: 0;
-`;
-
 // Reusable CartBar component
 export const CartBar: React.FC<{
   price: React.ReactNode;
@@ -208,18 +199,18 @@ export const CartBar: React.FC<{
   loading?: boolean;
   onAdd: () => void;
   renderSpinner?: React.ReactNode;
-}> = ({ price, showButton, loading, onAdd, renderSpinner }) => (
-  <CartBarContainer>
-    <CartBarInner>
-      <CartPrice>Price: {price}</CartPrice>
-      {showButton && (
-        <CartButton onClick={onAdd}>
+}> = ({ price: _price, showButton, loading, onAdd, renderSpinner }) => {
+  if (!showButton) return null;
+  return (
+    <CartBarContainer>
+      <CartBarInner>
+        <CartButton onClick={onAdd} disabled={!!loading}>
           {loading ? (renderSpinner ?? <span>…</span>) : <span>Save and Order</span>}
         </CartButton>
-      )}
-    </CartBarInner>
-  </CartBarContainer>
-);
+      </CartBarInner>
+    </CartBarContainer>
+  );
+};
 
 export const ViewportSpacer = styled.div`
   flex: 0 0 auto;

@@ -1,7 +1,7 @@
 import React, { FunctionComponent, useEffect, useMemo, useRef, useState, useCallback } from 'react';
 // import styled from 'styled-components';
 import { useZakeke } from 'zakeke-configurator-react';
-import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, ActionsCenter, ConfigWarning, ViewportSpacer } from './list';
+import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, ActionsCenter, ConfigWarning, ViewportSpacer, CartButton } from './list';
 // import { List, StepListItem, , ListItemImage } from './list';
 import { optionNotes } from '../data/option-notes';
 import { TailSpin } from 'react-loader-spinner';
@@ -1344,26 +1344,39 @@ const Selector: FunctionComponent<{}> = () => {
             )}
 
             {onLabelStep && (
-              <>
-                <ActionsCenter>
-                  <button
-                    className="configurator-button"
-                    disabled={!canDesign}
-                    title={!canDesign ? 'Select liquid, and closure first' : undefined}
-                    onClick={handleDesignWithAi}
+              <ActionsCenter>
+                {labelsPopulated ? (
+                  <CartButton
+                    onClick={handleAddToCart}
+                    disabled={!showAddToCartButton || isAddToCartLoading}
                   >
-                    Design with AI
-                  </button>
-                  <button
-                    className="configurator-button"
-                    disabled={!canDesign}
-                    title={!canDesign ? 'Select liquid, and closure first' : undefined}
-                    onClick={handleUploadLabels}
-                  >
-                    Upload Your Label
-                  </button>
-                </ActionsCenter>
-              </>
+                    {isAddToCartLoading ? (
+                      <TailSpin color="#FFFFFF" height="20px" width="20px" />
+                    ) : (
+                      'Save and Order'
+                    )}
+                  </CartButton>
+                ) : (
+                  <>
+                    <button
+                      className="configurator-button"
+                      disabled={!canDesign}
+                      title={!canDesign ? 'Select liquid, and closure first' : undefined}
+                      onClick={handleDesignWithAi}
+                    >
+                      Design with AI
+                    </button>
+                    <button
+                      className="configurator-button"
+                      disabled={!canDesign}
+                      title={!canDesign ? 'Select liquid, and closure first' : undefined}
+                      onClick={handleUploadLabels}
+                    >
+                      Upload Your Label
+                    </button>
+                  </>
+                )}
+              </ActionsCenter>
             )}
 
             {notesCategory && selectedOptionForNotes && (
