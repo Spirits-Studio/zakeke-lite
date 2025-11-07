@@ -104,6 +104,8 @@ const Selector: FunctionComponent<{}> = () => {
         // restoreMeshVisibility,
     } = useZakeke();
 
+    console.log("items", items)
+
     const allowedParentOrigins = useMemo(() => {
       const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk'])
         .map(origin => origin.trim())
