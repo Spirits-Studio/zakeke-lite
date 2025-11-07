@@ -3,10 +3,12 @@
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@babel/runtime": "^7.23.6",
     "lodash": "^4.17.21",
     "react": "^18",
     "react-dom": "^18",
     "react-scripts": "5.0.1",
+    "react-spinners": "^0.17.0",
     "styled-components": "^6.1.1",
     "typescript": "^4",
     "zakeke-configurator-react": "0.1.280-prod",
@@ -14,11 +16,12 @@
   },
   "scripts": {
     "copy": "cpy node_modules/zakeke-configurator-react/dist/globals*.js public/",
-    "start": "npm run copy && react-scripts start",
-    "build": "npm run copy && react-scripts build",
+    "start": "npm run copy && craco start",
+    "build": "npm run copy && craco build",
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
-    "eject": "npm run copy && react-scripts eject"
+    "eject": "npm run copy && react-scripts eject",
+    "test": "craco test"
   },
   "eslintConfig": {
     "extends": "react-app"
@@ -40,8 +43,9 @@
   "devDependencies": {
     "@babel/core": "^7.23.6",
     "@babel/plugin-proposal-private-property-in-object": "^7.21.11",
-    "@babel/plugin-transform-runtime": "^7.28.5",
+    "@babel/plugin-transform-runtime": "^7.23.6",
     "@babel/preset-env": "^7.23.6",
+    "@craco/craco": "^7.1.0",
     "@testing-library/jest-dom": "^6.1.5",
     "@types/jest": "^29.5.11",
     "@types/lodash": "^4.14.202",
@@ -49,7 +53,6 @@
     "@types/react": "^18",
     "@types/react-color": "^3.0.10",
     "@types/react-dom": "^18",
-    "@types/react-loader-spinner": "^4.0.0",
     "@types/styled-components": "^5.1.34",
     "core-js": "^3.46.0",
     "cpy-cli": "^5.0.0",

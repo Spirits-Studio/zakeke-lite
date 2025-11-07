@@ -4,7 +4,8 @@ import { useZakeke } from 'zakeke-configurator-react';
 import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, ActionsCenter, ConfigWarning, ViewportSpacer, CartButton } from './list';
 // import { List, StepListItem, , ListItemImage } from './list';
 import { optionNotes } from '../data/option-notes';
-import { TailSpin } from 'react-loader-spinner';
+// import { ClipLoader } from 'react-loader-spinner';
+import { ClipLoader } from 'react-spinners';
 
 import { useOrderStore } from '../state/orderStore';
 
@@ -403,7 +404,7 @@ const Selector: FunctionComponent<{}> = () => {
             console.error('[READY EFFECT] postMessage failed', stage, e);
           }
         };
-        
+
 
         // 1) Send now
         send('immediate');
@@ -1428,7 +1429,7 @@ const Selector: FunctionComponent<{}> = () => {
                     disabled={!showAddToCartButton || isAddToCartLoading}
                   >
                     {isAddToCartLoading ? (
-                      <TailSpin color="#FFFFFF" height="20px" width="20px" />
+                      <ClipLoader color="#FFFFFF" size={40} loading={true} />
                     ) : (
                       'Save and Order'
                     )}
@@ -1472,7 +1473,7 @@ const Selector: FunctionComponent<{}> = () => {
           showButton={showAddToCartButton}
           loading={isAddToCartLoading}
           onAdd={handleAddToCart}
-          renderSpinner={<TailSpin color="#FFFFFF" height="25px" />}
+          renderSpinner={<ClipLoader color="#FFFFFF" size={40} loading={true} />}
         />
         </LayoutWrapper>
       </>
