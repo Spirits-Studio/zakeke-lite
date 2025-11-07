@@ -144,7 +144,7 @@ const Selector: FunctionComponent<{}> = () => {
         isAreaVisible,
         createImageFromUrl, 
         addItemImage,
-        removeItem,
+        // removeItem,
         isAssetsLoading,
         isViewerReady,
         // templates,
@@ -654,6 +654,8 @@ const Selector: FunctionComponent<{}> = () => {
     ].join('|');
     // Debounce cross-window/store update to avoid bursts during initialisation
     const debouncedSetFromSelectionsTimer = useRef<number | null>(null);
+    // We intentionally key this effect only on `orderKey` to debounce cross-window/store updates.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => {
       // clear any pending run
       if (debouncedSetFromSelectionsTimer.current) {
@@ -835,10 +837,10 @@ const Selector: FunctionComponent<{}> = () => {
       [findLabelArea]
     );
 
-    const backLabelAreaId = useMemo(
-      () => findLabelArea('back')?.id ?? null,
-      [findLabelArea]
-    );
+    // const backLabelAreaId = useMemo(
+    //   () => findLabelArea('back')?.id ?? null,
+    //   [findLabelArea]
+    // );
 
     // // Checks both front and back label areas (if defined) have at least one active item assigned
     // const labelsPopulated = useMemo(() => {

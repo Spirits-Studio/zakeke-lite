@@ -24,8 +24,10 @@ module.exports = {
           version: "^7.23.6"
         }
       ],
-      // Add any Stage-3 proposals you rely on (examples below are safe/common)
-      ["@babel/plugin-proposal-private-property-in-object", { loose: true }]
+      // Babel transform plugins for class properties and private fields/methods
+      ["@babel/plugin-transform-class-properties", { loose: true }],
+      ["@babel/plugin-transform-private-methods", { loose: true }],
+      ["@babel/plugin-transform-private-property-in-object", { loose: true }]
       // You can add more plugins here as needed
     ]
   }
