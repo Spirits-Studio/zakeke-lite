@@ -403,6 +403,7 @@ const Selector: FunctionComponent<{}> = () => {
             console.error('[READY EFFECT] postMessage failed', stage, e);
           }
         };
+        
 
         // 1) Send now
         send('immediate');
