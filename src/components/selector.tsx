@@ -153,7 +153,7 @@ const Selector: FunctionComponent<{}> = () => {
         // restoreMeshVisibility,
     } = useZakeke();
 
-    if (process.env.NODE_ENV !== 'production') console.log('[items]', Array.isArray(items) ? items.length : 'n/a');
+    // if (process.env.NODE_ENV !== 'production') console.log('[items]', Array.isArray(items) ? items.length : 'n/a');
 
     const allowedParentOrigins = useMemo(() => {
       const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk'])
@@ -386,7 +386,7 @@ const Selector: FunctionComponent<{}> = () => {
       }
 
       // Debug: show gate state on every change
-      console.log('[READY EFFECT]', { assetsOk, viewerOk, basicsOk, pricedOk, isReady, alreadyPosted: firstRenderPostedRef.current });
+      // console.log('[READY EFFECT]', { assetsOk, viewerOk, basicsOk, pricedOk, isReady, alreadyPosted: firstRenderPostedRef.current });
 
       if (isReady && !firstRenderPostedRef.current) {
         firstRenderPostedRef.current = true;
@@ -399,7 +399,7 @@ const Selector: FunctionComponent<{}> = () => {
           try {
             window.parent?.postMessage(basePayload, '*');
             window.top?.postMessage(basePayload, '*');
-            console.log('[READY EFFECT] postMessage:', stage, basePayload.meta);
+            // console.log('[READY EFFECT] postMessage:', stage, basePayload.meta);
           } catch (e) {
             console.error('[READY EFFECT] postMessage failed', stage, e);
           }
@@ -466,18 +466,18 @@ const Selector: FunctionComponent<{}> = () => {
         if (!pricedOk) blocks.push('pricedOk=false (price is null)');
 
         // single compact log line for grepability
-        console.log('[ZAKEKE READY DEBUG]', {
-          assetsOk,
-          viewerOk,
-          basicsOk,
-          pricedOk,
-          isReady,
-          safariGraceReady,
-          price,
-          sku: product?.sku ?? null,
-          groupsCount: Array.isArray(groups) ? groups.length : null,
-          blocks,
-        });
+        // console.log('[ZAKEKE READY DEBUG]', {
+        //   assetsOk,
+        //   viewerOk,
+        //   basicsOk,
+        //   pricedOk,
+        //   isReady,
+        //   safariGraceReady,
+        //   price,
+        //   sku: product?.sku ?? null,
+        //   groupsCount: Array.isArray(groups) ? groups.length : null,
+        //   blocks,
+        // });
       }
     }, [isAssetsLoading, isSceneLoading, isViewerReady, price, product, groups, safariGraceReady]);
     
@@ -986,14 +986,14 @@ const Selector: FunctionComponent<{}> = () => {
             readyAckedRef.current = true;
             if (readyRetryTimer1.current) { clearTimeout(readyRetryTimer1.current as any); readyRetryTimer1.current = null; }
             if (readyRetryTimer2.current) { clearTimeout(readyRetryTimer2.current as any); readyRetryTimer2.current = null; }
-            console.log('[READY EFFECT] ACK received from parent; stopping retries');
+            // console.log('[READY EFFECT] ACK received from parent; stopping retries');
             return; // nothing else to do on ack
           }
         }
         if (!payload || typeof payload !== 'object') return;
 
         if (payload.customMessageType === 'uploadDesign') {
-          console.log("uploadDesign payload", payload);
+          // console.log("uploadDesign payload", payload);
 
           const { designExport, designSide } = payload.message || {};
           const parentOrder = payload.message?.order;
@@ -1014,9 +1014,9 @@ const Selector: FunctionComponent<{}> = () => {
           if (!designSide ) return;
 
           const targetArea = findLabelArea(designSide);
-          console.log("targetArea", targetArea);
-          console.log("items before adding label", items);
-          console.log("groups before adding label", groups);
+          // console.log("targetArea", targetArea);
+          // console.log("items before adding label", items);
+          // console.log("groups before adding label", groups);
           if (!targetArea) {
             console.warn('No area found', { designSide, bottleSlug: productObject?.bottleSlug ?? null });
             return;
@@ -1024,13 +1024,13 @@ const Selector: FunctionComponent<{}> = () => {
 
           if(designSide === "front") {
             const frontImage = await createImageFromUrl(designExport.s3url);
-            console.log("frontImage", frontImage);
+            // console.log("frontImage", frontImage);
             // const frontImage = await createImageFromUrl("https://spirits-studio.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
             // const frontMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_front`);
             // console.log("frontMeshId", frontMeshId);
 
             const frontAreaId = targetArea.id;
-            console.log("frontAreaId", frontAreaId);
+            // console.log("frontAreaId", frontAreaId);
 
             
             if (frontImage?.imageID && frontAreaId) {
