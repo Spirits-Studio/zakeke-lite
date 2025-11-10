@@ -66,16 +66,93 @@ import * as serviceWorker from './serviceWorker';
     }
   } catch {}
 })();
+
 // ---- end module inspector ----
+// ---- Safari telemetry + parent handshake ----
+(function telemetryAndHandshake() {
+  const ORIGIN = '*'; // TODO: tighten to 'https://spiritsstudio.co.uk' once verified
+  const send = (type: string, payload: any = {}) => {
+    try { window.parent && window.parent.postMessage({ src: 'zakeke-app', type, payload }, ORIGIN); } catch {}
+  };
+
+  // Lifecycle breadcrumbs
+  send('zk-bootstrap-start', { ua: navigator.userAgent, ts: Date.now() });
+  window.addEventListener('DOMContentLoaded', () => send('zk-domcontentloaded'));
+  window.addEventListener('load', () => send('zk-window-load'));
+
+  // Error traps (report to parent)
+  window.addEventListener('error', (e: ErrorEvent) => {
+    send('zk-error', {
+      message: (e as any)?.error?.message || e.message,
+      stack: (e as any)?.error?.stack,
+      filename: e.filename, lineno: e.lineno, colno: e.colno
+    });
+  });
+  window.addEventListener('unhandledrejection', (e: PromiseRejectionEvent) => {
+    const r: any = e?.reason;
+    send('zk-unhandledrejection', {
+      reason: typeof r === 'string' ? r : (r?.message || r),
+      stack: r?.stack
+    });
+  });
+
+  // Observe #root hydration to detect stalls (Safari-specific symptom)
+  const observeRoot = () => {
+    const root = document.getElementById('root');
+    if (!root) return;
+    const obs = new MutationObserver(() => {
+      const childCount = root.querySelectorAll('*').length;
+      send('zk-root-mutation', { childCount });
+      if (childCount > 10) { // heuristic: app DOM populated
+        send('zakeke-ready');
+        obs.disconnect();
+      }
+    });
+    obs.observe(root, { childList: true, subtree: true });
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', observeRoot, { once: true });
+  } else {
+    observeRoot();
+  }
+
+  // Expose a tiny debug hook for manual pings from the console
+  (window as any).__zkPing = (note?: any) => send('zk-ping', { note, ts: Date.now() });
+})();
+// ---- end telemetry + handshake ----
 
 
 
-ReactDOM.render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-  document.getElementById('root')
-);
+const mountNode = document.getElementById('root');
+(window as any).__zk_performance = { t0: performance.now() };
+try {
+  ReactDOM.render(
+    <React.StrictMode>
+      <App />
+    </React.StrictMode>,
+    mountNode
+  );
+  (function () {
+    try {
+      const t1 = performance.now();
+      (window as any).__zk_performance.t1 = t1;
+      window.parent?.postMessage({
+        src: 'zakeke-app',
+        type: 'zk-react-mounted',
+        payload: { durationMs: t1 - (window as any).__zk_performance.t0 }
+      }, '*');
+    } catch {}
+  })();
+} catch (e) {
+  try {
+    window.parent?.postMessage({
+      src: 'zakeke-app',
+      type: 'zk-react-mount-error',
+      payload: { message: (e as any)?.message, stack: (e as any)?.stack }
+    }, '*');
+  } catch {}
+  throw e;
+}
 
 // If you want your app to work offline and load faster, you can change
 // unregister() to register() below. Note this comes with some pitfalls.
