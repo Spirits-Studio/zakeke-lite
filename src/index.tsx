@@ -6,7 +6,97 @@ import './index.css';
 import App from './components/app';
 import * as serviceWorker from './serviceWorker';
 
-// ---- Runtime module inspector (helps decode "r is not a function" from minified stacks) ----
+// ---- Zakeke network tap (fetch/XMLHttpRequest) ----
+(function installZkNetTap(){
+  try {
+    const ORIGIN: string = '*'; // tighten to your parent origin later
+    const w = window as unknown as {
+      fetch: typeof window.fetch;
+      parent: Window | null;
+      __zkNetTap?: { enabled: boolean };
+    };
+
+    const shouldLog = (url: string): boolean => /zakeke\./i.test(url) || /\/api\//i.test(url);
+    const post = (type: string, payload: unknown): void => {
+      try { w.parent && w.parent.postMessage({ src: 'zakeke-app', type, payload }, ORIGIN); } catch {}
+    };
+
+    // --- fetch tap ---
+    const _fetch = w.fetch.bind(window);
+    w.fetch = (async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const started = Date.now();
+      const url = typeof input === 'string' ? input : (input as URL | Request).toString();
+      const method = (init && (init as RequestInit).method) || 'GET';
+      if (shouldLog(url)) post('zk-net-fetch', { phase: 'start', method, url });
+      try {
+        const res = await _fetch(input as any, init as any);
+        if (shouldLog(url)) {
+          const clone = res.clone();
+          let bodySnippet: string | null = null;
+          try { bodySnippet = await clone.text(); bodySnippet = bodySnippet.slice(0, 3000); } catch {}
+          post('zk-net-fetch', { phase: 'end', method, url, status: res.status, durMs: Date.now()-started, bodySnippet });
+        }
+        return res;
+      } catch (e) {
+        const err = e as Error;
+        if (shouldLog(url)) post('zk-net-fetch', { phase: 'error', method, url, error: err?.message });
+        throw e;
+      }
+    }) as typeof window.fetch;
+
+    // --- XHR tap ---
+    // Provide precise typings for `this` and the open/send signatures to avoid TS2683/TS2345
+    type ZkXHR = XMLHttpRequest & { __zk?: { url: string; method: string; started: number } };
+
+    const _open = XMLHttpRequest.prototype.open;
+    const _send = XMLHttpRequest.prototype.send;
+
+    XMLHttpRequest.prototype.open = function (
+      this: XMLHttpRequest,
+      method: string,
+      url: string | URL,
+      async: boolean = true,
+      username?: string | null,
+      password?: string | null
+    ): void {
+      const xhr = this as ZkXHR;
+      const urlStr = typeof url === 'string' ? url : url.toString();
+      xhr.__zk = { url: urlStr, method, started: 0 };
+      // Call native open with a fully-specified signature
+      return _open.call(this, method, urlStr, async, username ?? null, password ?? null);
+    } as typeof XMLHttpRequest.prototype.open;
+
+    XMLHttpRequest.prototype.send = function (
+      this: XMLHttpRequest,
+      body?: Document | XMLHttpRequestBodyInit | null
+    ): void {
+      try {
+        const xhr = this as ZkXHR;
+        const meta = xhr.__zk || { url: '', method: 'GET', started: 0 };
+        meta.started = Date.now();
+        xhr.__zk = meta;
+        if (shouldLog(meta.url)) post('zk-net-xhr', { phase: 'start', method: meta.method, url: meta.url });
+        this.addEventListener('loadend', function (this: XMLHttpRequest) {
+          const m = (this as ZkXHR).__zk || meta;
+          if (!shouldLog(m.url)) return;
+          post('zk-net-xhr', { phase: 'end', method: m.method, url: m.url, status: this.status, durMs: Date.now() - m.started });
+        });
+        this.addEventListener('error', function (this: XMLHttpRequest) {
+          const m = (this as ZkXHR).__zk || meta;
+          if (!shouldLog(m.url)) return;
+          post('zk-net-xhr', { phase: 'error', method: m.method, url: m.url });
+        });
+      } catch {}
+      return _send.call(this, body as any);
+    } as typeof XMLHttpRequest.prototype.send;
+
+    // Optional toggle for debugging
+    (w as any).__zkNetTap = { enabled: true };
+  } catch {}
+})();
+// ---- end Zakeke network tap ----
+
+// ---- Runtime module inspector ----
 (function attachModuleInspector() {
   try {
     const qp = new URLSearchParams(window.location.search);

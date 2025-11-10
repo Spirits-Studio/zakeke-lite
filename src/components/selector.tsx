@@ -153,7 +153,9 @@ const Selector: FunctionComponent<{}> = () => {
         // restoreMeshVisibility,
     } = useZakeke();
 
-    // if (process.env.NODE_ENV !== 'production') console.log('[items]', Array.isArray(items) ? items.length : 'n/a');
+    if (process.env.NODE_ENV !== 'production') console.log('[groups]', groups);
+    if (process.env.NODE_ENV !== 'production') console.log('[items]', Array.isArray(items) ? items.length : 'n/a');
+
 
     const allowedParentOrigins = useMemo(() => {
       const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk'])
