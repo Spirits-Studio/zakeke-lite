@@ -129,6 +129,16 @@ const slugFromOption = (option: any) => {
 const toMini = (o: any) =>
   o ? ({ id: o.id, guid: o.guid, name: o.name, selected: !!o.selected }) : null;
 
+const sleep = (ms: number) => new Promise<void>(resolve => {
+  if (ms <= 0) {
+    resolve();
+    return;
+  }
+  setTimeout(resolve, ms);
+});
+
+const CAMERA_PREVIEW_SETTLE_MS = 800;
+
 const Selector: FunctionComponent<{}> = () => {
     const {
         isSceneLoading,
@@ -144,6 +154,7 @@ const Selector: FunctionComponent<{}> = () => {
         isAreaVisible,
         createImageFromUrl, 
         addItemImage,
+        cameras,
         // removeItem,
         isAssetsLoading,
         isViewerReady,
@@ -153,12 +164,12 @@ const Selector: FunctionComponent<{}> = () => {
         // restoreMeshVisibility,
     } = useZakeke();
 
-    if (process.env.NODE_ENV !== 'production') console.log('[groups]', groups);
-    if (process.env.NODE_ENV !== 'production') console.log('[items]', Array.isArray(items) ? items.length : 'n/a');
+    // if (process.env.NODE_ENV !== 'production') console.log('[groups]', groups);
+    // if (process.env.NODE_ENV !== 'production') console.log('[items]', Array.isArray(items) ? items.length : 'n/a');
 
 
     const allowedParentOrigins = useMemo(() => {
-      const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk'])
+      const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk', 'http://localhost:3000', 'https://localhost:3000'])
         .map(origin => origin.trim())
         .filter(Boolean);
       const globalList =
@@ -869,7 +880,7 @@ const Selector: FunctionComponent<{}> = () => {
       labelsPopulatedRef.current = labelsPopulated;
     }, [labelsPopulated]);
     const waitForLabelsPopulated = useCallback(
-      async (timeoutMs = 5000, pollMs = 120) => {
+      async (timeoutMs = 10000, pollMs = 120) => {
         if (labelsPopulatedRef.current) return true;
         return new Promise<boolean>((resolve) => {
           const start = Date.now();
@@ -964,7 +975,7 @@ const Selector: FunctionComponent<{}> = () => {
     
     useEffect(() => {
       const onMsg = async (e: MessageEvent) => {
-        console.log("Received message", e);
+        // console.log("Received message", e);
         const origin = e.origin || '';
         const originAllowed = (() => {
           if (!origin) return false;
@@ -1019,23 +1030,28 @@ const Selector: FunctionComponent<{}> = () => {
 
           if(designSide === "front") {
             const frontImage = await createImageFromUrl(designExport.s3url);
-            // console.log("frontImage", frontImage);
+            console.log("frontImage", frontImage);
             // const frontImage = await createImageFromUrl("https://spirits-studio.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
             // const frontMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_front`);
             // console.log("frontMeshId", frontMeshId);
 
             const frontAreaId = targetArea.id;
-            // console.log("frontAreaId", frontAreaId);
+            console.log("frontAreaId", frontAreaId);
+
+            console.log("areas", areas)
 
             
             if (frontImage?.imageID && frontAreaId) {
               await addItemImage(frontImage.imageID, frontAreaId);
+              console.log("addItemImage", addItemImage)
 
               const populated = await waitForLabelsPopulated();
               if (!populated) {
                 console.warn('Timed out waiting for front label to populate.');
                 return;
               }
+
+              console.log("populated", populated);
               markDomLabelReady('front');
 
               window.parent.postMessage({
@@ -1226,7 +1242,7 @@ const Selector: FunctionComponent<{}> = () => {
         final = cams.full_front;
       } else if (stepKey === 'closure') {
         frames = ['wide_high_front', 'wide_high_back'];
-        final = cams.label_front;
+        final = cams.closure;
       } else if (stepKey === 'label') {
         frames = ['wide_high_front'];
         const preferFront = !!labelAreas.front || !labelAreas.back;
@@ -1316,11 +1332,62 @@ const Selector: FunctionComponent<{}> = () => {
     // };
     
 
-    if (isSceneLoading || !groups || groups.length === 0)
-        return <LoadingSpinner />;
-    
+    const isConfiguratorLoading = isSceneLoading || !Array.isArray(groups) || !groups.length;
+
+    const moveCameraToFullFront = useCallback(async () => {
+      if (!Array.isArray(cameras) || !cameras.length) return;
+
+      const slugCandidate =
+        productObject.bottleSlug ||
+        bottleSlug ||
+        slugify(selections.bottle?.name || '');
+
+      const normalizedSlug = (slugCandidate || '').trim().toLowerCase();
+      if (!normalizedSlug) return;
+
+      const hyphenSlug = normalizedSlug.replace(/[_\s]+/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      const underscoreSlug = normalizedSlug.replace(/[-\s]+/g, '_').replace(/_+/g, '_').replace(/^_|_$/g, '');
+
+      const candidateNames = Array.from(new Set(
+        [
+          hyphenSlug && `${hyphenSlug}-full-front`,
+          hyphenSlug && `${hyphenSlug}_full_front`,
+          underscoreSlug && `${underscoreSlug}-full-front`,
+          underscoreSlug && `${underscoreSlug}_full_front`,
+          normalizedSlug && `${normalizedSlug}-full-front`,
+          normalizedSlug && `${normalizedSlug}_full_front`,
+        ].filter(Boolean) as string[]
+      ));
+
+      const namedCameras = cameras
+        .map((cam: any) => (typeof cam?.name === 'string' ? cam.name : ''))
+        .filter(Boolean)
+        .map(name => ({ original: name, normalized: name.toLowerCase() }));
+
+      if (!namedCameras.length) return;
+
+      const explicitMatch = namedCameras.find(entry =>
+        candidateNames.some(candidate => candidate.toLowerCase() === entry.normalized)
+      );
+
+      const fallbackMatch = namedCameras.find(entry =>
+        /full[-_]?front$/i.test(entry.normalized)
+      );
+
+      const targetCamera = (explicitMatch ?? fallbackMatch)?.original;
+      if (!targetCamera) return;
+
+      try {
+        setCameraByName(targetCamera, false, true);
+        await sleep(CAMERA_PREVIEW_SETTLE_MS);
+      } catch (err) {
+        console.warn('[Configurator] Failed to move camera before Add to Cart', targetCamera, err);
+      }
+    }, [cameras, productObject.bottleSlug, bottleSlug, selections.bottle?.name, setCameraByName]);
+
     const handleAddToCart = async () => {
     try {
+        await moveCameraToFullFront();
         await addToCart(
             {},
             async (data) => {
@@ -1347,6 +1414,9 @@ const Selector: FunctionComponent<{}> = () => {
         console.error('Error during addToCart:', error);
     }
 };
+
+    if (isConfiguratorLoading)
+        return <LoadingSpinner />;
 
     const showAddToCartButton = productObject.valid && labelsPopulated;
 
