@@ -995,7 +995,7 @@ const Selector: FunctionComponent<{}> = () => {
         if (!payload || typeof payload !== 'object') return;
 
         if (payload.customMessageType === 'uploadDesign') {
-          // console.log("uploadDesign payload", payload);
+          console.log("uploadDesign payload.message", payload.message);
 
           const { designExport, designSide } = payload.message || {};
           const parentOrder = payload.message?.order;
@@ -1008,17 +1008,10 @@ const Selector: FunctionComponent<{}> = () => {
             });
           }
 
-          // items.forEach(item => {
-          //   const itemGuid = item.guid;
-          //   removeItem(itemGuid)
-          // })
-
           if (!designSide ) return;
 
           const targetArea = findLabelArea(designSide);
-          // console.log("targetArea", targetArea);
-          // console.log("items before adding label", items);
-          // console.log("groups before adding label", groups);
+          console.log("targetArea", targetArea);
           if (!targetArea) {
             console.warn('No area found', { designSide, bottleSlug: productObject?.bottleSlug ?? null });
             return;
