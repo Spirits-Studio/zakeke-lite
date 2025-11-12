@@ -7,7 +7,7 @@ import { optionNotes } from '../data/option-notes';
 // import { ClipLoader } from 'react-loader-spinner';
 import ClipLoader from 'react-spinners/ClipLoader';
 
-import { useOrderStore, type Mini } from '../state/orderStore';
+import { useOrderStore } from '../state/orderStore';
 
 // ---- Safari / legacy polyfills & diagnostics ----
 // Polyfill Array.prototype.flatMap for older Safari builds
@@ -139,22 +139,109 @@ const sleep = (ms: number) => new Promise<void>(resolve => {
 
 const CAMERA_PREVIEW_SETTLE_MS = 800;
 
-type LabelAsset = {
-  designId: string | number | null;
-  s3url: string | null;
-  export: any;
-} | null;
+type LabelDesignSource = 'vistaCreate' | 'ai' | 'upload';
 
-type BaseLabelMini = Exclude<Mini, null>;
-type LabelSelectionExtras = {
-  assets: {
-    front: LabelAsset;
-    back: LabelAsset;
-  };
-  frontDesignS3Url: string | null;
-  backDesignS3Url: string | null;
+type LabelSelectionDetail = {
+  s3Url: string | null;
+  zakekeMediaUrl: string | null;
+  zakekePreviewUrl: string | null;
+  designSource: LabelDesignSource;
+  designSourceId: string | null;
 };
-type AugmentedLabelSelection = (BaseLabelMini & LabelSelectionExtras) | null;
+
+type LabelSelectionsBySide = {
+  front: LabelSelectionDetail | null;
+  back: LabelSelectionDetail | null;
+};
+
+const toTrimmedString = (value: unknown): string | null => {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    return trimmed ? trimmed : null;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return null;
+};
+
+const normalizeDesignSource = (
+  value: unknown,
+  fallback: LabelDesignSource = 'upload'
+): LabelDesignSource => {
+  const raw = toTrimmedString(value);
+  if (!raw) return fallback;
+  const normalized = raw.toLowerCase();
+  if (normalized.includes('vista')) return 'vistaCreate';
+  if (normalized === 'vc') return 'vistaCreate';
+  if (normalized === 'ai' || normalized.includes('ai')) return 'ai';
+  if (normalized === 'upload') return 'upload';
+  return fallback;
+};
+
+const buildLabelSelectionDetail = (
+  design: any,
+  options: {
+    fallbackSource?: LabelDesignSource;
+    overrides?: Partial<LabelSelectionDetail>;
+  } = {}
+): LabelSelectionDetail | null => {
+  const { fallbackSource = 'upload', overrides = {} } = options;
+  const safe = design && typeof design === 'object' ? design : null;
+
+  const s3Url =
+    overrides.s3Url ??
+    toTrimmedString(safe?.s3Url) ??
+    toTrimmedString(safe?.s3url) ??
+    toTrimmedString(safe?.url);
+
+  const zakekeMediaUrl =
+    overrides.zakekeMediaUrl ??
+    toTrimmedString(safe?.zakekeMediaUrl) ??
+    toTrimmedString(safe?.mediaUrl) ??
+    toTrimmedString(safe?.zakekeMedia?.url) ??
+    toTrimmedString(safe?.media?.url);
+
+  const zakekePreviewUrl =
+    overrides.zakekePreviewUrl ??
+    toTrimmedString(safe?.zakekePreviewUrl) ??
+    toTrimmedString(safe?.previewUrl) ??
+    toTrimmedString(safe?.preview?.url) ??
+    toTrimmedString(safe?.preview);
+
+  const designSourceId =
+    overrides.designSourceId ??
+    toTrimmedString(safe?.designSourceId) ??
+    toTrimmedString(safe?.sourceId) ??
+    toTrimmedString(safe?.id) ??
+    toTrimmedString(safe?.designId) ??
+    toTrimmedString(safe?.design_id);
+
+  const designSource =
+    overrides.designSource ??
+    normalizeDesignSource(
+      toTrimmedString(safe?.designSource) ?? toTrimmedString(safe?.source),
+      fallbackSource
+    );
+
+  const hasValue =
+    s3Url ||
+    zakekeMediaUrl ||
+    zakekePreviewUrl ||
+    designSourceId ||
+    overrides.designSource ||
+    overrides.designSourceId;
+
+  if (!hasValue) return null;
+
+  return {
+    s3Url: s3Url ?? null,
+    zakekeMediaUrl: zakekeMediaUrl ?? null,
+    zakekePreviewUrl: zakekePreviewUrl ?? null,
+    designSource,
+    designSourceId: designSourceId ?? null,
+  };
+};
 
 const Selector: FunctionComponent<{}> = () => {
     const {
@@ -655,42 +742,11 @@ const Selector: FunctionComponent<{}> = () => {
       miniLabel,
     ]);
 
-    const labelAssets = useMemo(() => {
-      const build = (side: 'front' | 'back'): LabelAsset => {
-        const design = (labelDesigns as any)?.[side];
-        if (!design) return null;
-        const s3url =
-          typeof design?.s3url === 'string' ? design.s3url :
-          typeof design?.url === 'string' ? design.url :
-          null;
-        const designId =
-          design?.id ??
-          design?.designId ??
-          design?.design_id ??
-          design?.vistaCreateId ??
-          null;
-        return {
-          designId,
-          s3url,
-          export: design,
-        };
-      };
-      return {
-        front: build('front'),
-        back: build('back'),
-      } as const;
+    const labelSelBySide = useMemo<LabelSelectionsBySide>(() => {
+      const front = buildLabelSelectionDetail((labelDesigns as any)?.front);
+      const back = buildLabelSelectionDetail((labelDesigns as any)?.back);
+      return { front, back };
     }, [labelDesigns]);
-
-    const labelSelectionWithAssets = useMemo<AugmentedLabelSelection>(() => {
-      if (!selections.label) return null;
-      const base = selections.label as BaseLabelMini;
-      return {
-        ...base,
-        assets: labelAssets,
-        frontDesignS3Url: labelAssets.front?.s3url ?? null,
-        backDesignS3Url: labelAssets.back?.s3url ?? null,
-      };
-    }, [selections.label, labelAssets]);
 
     // Speed Change
     
@@ -765,9 +821,6 @@ const Selector: FunctionComponent<{}> = () => {
         hasClosureSelection &&
         (!hasBottleStep || hasBottleSelection);
 
-      const resolvedLabelSelection: Mini =
-        (labelSelectionWithAssets as unknown as Mini) ?? selections.label;
-
       return {
         sku: product?.sku ?? null,
         price,
@@ -776,13 +829,15 @@ const Selector: FunctionComponent<{}> = () => {
           bottle: selections.bottle,
           liquid: selections.liquid,
           closure: selections.closure,
-          label: resolvedLabelSelection,
+          label: selections.label,
+          labelSel: labelSelBySide,
           // carry VistaCreate design IDs for edit flow
           frontDesignId: (labelDesigns as any)?.front?.id ?? null,
           backDesignId:  (labelDesigns as any)?.back?.id  ?? null,
         },
         mesh: { frontMeshId, backMeshId },
-        labels: labelAssets,
+        labels: labelSelBySide,
+        labelSel: labelSelBySide,
         valid,
       } as const;
     }, [
@@ -792,8 +847,7 @@ const Selector: FunctionComponent<{}> = () => {
       getMeshIDbyName,
       labelDesigns,
       bottleSlug,
-      labelAssets,
-      labelSelectionWithAssets,
+      labelSelBySide,
       hasBottleSelection,
       hasBottleStep,
       hasClosureSelection,
@@ -1068,58 +1122,66 @@ const Selector: FunctionComponent<{}> = () => {
         if (payload.customMessageType === 'uploadDesign') {
           console.log("uploadDesign payload.message", payload.message);
 
-          const { designExport, designSide } = payload.message || {};
+          const {
+            designExport,
+            designSide,
+            designSource: incomingDesignSource,
+            designSourceId: incomingDesignSourceId,
+          } = payload.message || {};
+          const normalizedDesignExport =
+            incomingDesignSource || incomingDesignSourceId
+              ? {
+                  ...(designExport || {}),
+                  ...(incomingDesignSource ? { designSource: incomingDesignSource } : {}),
+                  ...(incomingDesignSourceId ? { designSourceId: incomingDesignSourceId } : {}),
+                }
+              : designExport;
           const parentOrder = payload.message?.order;
           if (designSide) {
             // Persist to zustand so UI flips to "Edit [side] label" and save gating can use it
             setFromUploadDesign({
               order: parentOrder,
               designSide,
-              designExport,
+              designExport: normalizedDesignExport,
             });
           }
 
           if (!designSide ) return;
+          if (designSide !== 'front' && designSide !== 'back') {
+            console.warn('[Configurator] Unsupported design side provided', designSide);
+            return;
+          }
 
           const buildLabelMessagePayload = () => {
-            const currentSelection = productObject.selections.label;
-            const supportsExtras =
-              !!currentSelection &&
-              typeof currentSelection === 'object' &&
-              'frontDesignS3Url' in currentSelection &&
-              'backDesignS3Url' in currentSelection;
-            const existingFront = supportsExtras
-              ? (currentSelection as BaseLabelMini & LabelSelectionExtras).frontDesignS3Url
-              : null;
-            const existingBack = supportsExtras
-              ? (currentSelection as BaseLabelMini & LabelSelectionExtras).backDesignS3Url
-              : null;
+            const sourceOverrideRaw = toTrimmedString(incomingDesignSource);
+            const designSourceOverride = sourceOverrideRaw
+              ? normalizeDesignSource(sourceOverrideRaw)
+              : undefined;
+            const designSourceIdOverride = toTrimmedString(incomingDesignSourceId) ?? undefined;
 
-            const asset = {
-              designId: designExport?.id ?? designExport?.designId ?? null,
-              s3url: typeof designExport?.s3url === 'string' ? designExport.s3url : null,
-              export: designExport,
-            };
-            const labelsBase = productObject.labels ?? { front: null, back: null };
-            const mergedLabels = {
+            const detail =
+              buildLabelSelectionDetail(normalizedDesignExport, {
+                fallbackSource: designSourceOverride ?? 'upload',
+                overrides: {
+                  designSource: designSourceOverride,
+                  designSourceId: designSourceIdOverride ?? null,
+                },
+              }) ??
+              {
+                s3Url: null,
+                zakekeMediaUrl: null,
+                zakekePreviewUrl: null,
+                designSource: designSourceOverride ?? 'upload',
+                designSourceId: designSourceIdOverride ?? null,
+              };
+
+            const labelsBase = productObject.labelSel ?? { front: null, back: null };
+            const mergedLabelSel: LabelSelectionsBySide = {
               ...labelsBase,
-              [designSide]: asset,
+              [designSide]: detail,
             };
-            const mergedLabelSelection = productObject.selections.label
-              ? {
-                  ...productObject.selections.label,
-                  assets: mergedLabels,
-                  frontDesignS3Url:
-                    designSide === 'front'
-                      ? asset.s3url ?? existingFront
-                      : existingFront,
-                  backDesignS3Url:
-                    designSide === 'back'
-                      ? asset.s3url ?? existingBack
-                      : existingBack,
-                }
-              : null;
-            return { mergedLabels, mergedLabelSelection };
+
+            return { mergedLabelSel };
           };
 
           const targetArea = findLabelArea(designSide);
@@ -1130,7 +1192,15 @@ const Selector: FunctionComponent<{}> = () => {
           }
 
           if(designSide === "front") {
-            const frontImage = await createImageFromUrl(designExport.s3url);
+            const frontS3Url =
+              toTrimmedString(normalizedDesignExport?.s3url) ??
+              toTrimmedString(normalizedDesignExport?.s3Url) ??
+              toTrimmedString(normalizedDesignExport?.url);
+            if (!frontS3Url) {
+              console.warn('No front label URL provided; cannot create image.');
+              return;
+            }
+            const frontImage = await createImageFromUrl(frontS3Url);
             console.log("frontImage", frontImage);
             // const frontImage = await createImageFromUrl("https://spirits-studio.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
             // const frontMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_front`);
@@ -1155,7 +1225,7 @@ const Selector: FunctionComponent<{}> = () => {
               console.log("populated", populated);
               markDomLabelReady('front');
 
-              const { mergedLabels, mergedLabelSelection } = buildLabelMessagePayload();
+              const { mergedLabelSel } = buildLabelMessagePayload();
               window.parent.postMessage({
                 customMessageType: 'labelAdded',
                 message: {
@@ -1163,11 +1233,12 @@ const Selector: FunctionComponent<{}> = () => {
                     'bottle': productObject.selections.bottle,
                     'liquid': productObject.selections.liquid,
                     'closure': productObject.selections.closure,
-                    'label': mergedLabelSelection ?? productObject.selections.label,
+                    'label': productObject.selections.label,
                   },
-                  'labels': mergedLabels,
+                  'labels': mergedLabelSel,
+                  'labelSel': mergedLabelSel,
                   'designSide': designSide,
-                  'designExport': designExport,
+                  'designExport': normalizedDesignExport,
                   'productSku': product?.sku ?? null,
                 }
               }, '*');
@@ -1176,7 +1247,15 @@ const Selector: FunctionComponent<{}> = () => {
             }
           
           } else if(designSide === "back") {
-            const backImage = await createImageFromUrl(designExport.s3url);
+            const backS3Url =
+              toTrimmedString(normalizedDesignExport?.s3url) ??
+              toTrimmedString(normalizedDesignExport?.s3Url) ??
+              toTrimmedString(normalizedDesignExport?.url);
+            if (!backS3Url) {
+              console.warn('No back label URL provided; cannot create image.');
+              return;
+            }
+            const backImage = await createImageFromUrl(backS3Url);
             // const backImage = await createImageFromUrl("https://spirits-studio.s3.eu-west-2.amazonaws.com/public/Front+Label+for+the+Polo+Bottle+inc+Bleed.jpg");
   
             // const backMeshId = getMeshIDbyName(`${productObject?.selections?.bottle?.name.toLowerCase()}_label_back`);
@@ -1197,7 +1276,7 @@ const Selector: FunctionComponent<{}> = () => {
               }
               markDomLabelReady('back');
 
-              const { mergedLabels, mergedLabelSelection } = buildLabelMessagePayload();
+              const { mergedLabelSel } = buildLabelMessagePayload();
               window.parent.postMessage({
                 customMessageType: 'labelAdded',
                 message: {
@@ -1205,11 +1284,12 @@ const Selector: FunctionComponent<{}> = () => {
                     'bottle': productObject.selections.bottle,
                     'liquid': productObject.selections.liquid,
                     'closure': productObject.selections.closure,
-                    'label': mergedLabelSelection ?? productObject.selections.label,
+                    'label': productObject.selections.label,
                   },
-                  'labels': mergedLabels,
+                  'labels': mergedLabelSel,
+                  'labelSel': mergedLabelSel,
                   'designSide': designSide,
-                  'designExport': designExport,
+                  'designExport': normalizedDesignExport,
                   'productSku': product?.sku ?? null,
                 }
               }, '*');
@@ -1398,6 +1478,7 @@ const Selector: FunctionComponent<{}> = () => {
         label: productObject.selections.label,
       },
       labels: productObject.labels,
+      labelSel: productObject.labelSel,
       productSku: product?.sku ?? null,
       price,
     }), [productObject, product?.sku, price]);
@@ -1516,6 +1597,7 @@ const Selector: FunctionComponent<{}> = () => {
                         liquid: productObject.selections.liquid,
                         closure: productObject.selections.closure,
                         label: productObject.selections.label,
+                        labelSel: productObject.labelSel,
                         labels: productObject.labels,
                     }
                 }, "*");
@@ -1623,14 +1705,14 @@ const Selector: FunctionComponent<{}> = () => {
                     >
                       Design with AI
                     </button>
-                    <button
+                    {/* <button
                       className="configurator-button"
                       disabled={!canDesign}
                       title={!canDesign ? 'Select liquid, and closure first' : undefined}
                       onClick={handleUploadLabels}
                     >
                       Upload Your Label
-                    </button>
+                    </button> */}
                   </>
                 )}
               </ActionsCenter>
