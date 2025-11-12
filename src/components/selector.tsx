@@ -7,7 +7,7 @@ import { optionNotes } from '../data/option-notes';
 // import { ClipLoader } from 'react-loader-spinner';
 import ClipLoader from 'react-spinners/ClipLoader';
 
-import { useOrderStore } from '../state/orderStore';
+import { useOrderStore, type Mini } from '../state/orderStore';
 
 // ---- Safari / legacy polyfills & diagnostics ----
 // Polyfill Array.prototype.flatMap for older Safari builds
@@ -138,6 +138,23 @@ const sleep = (ms: number) => new Promise<void>(resolve => {
 });
 
 const CAMERA_PREVIEW_SETTLE_MS = 800;
+
+type LabelAsset = {
+  designId: string | number | null;
+  s3url: string | null;
+  export: any;
+} | null;
+
+type BaseLabelMini = Exclude<Mini, null>;
+type LabelSelectionExtras = {
+  assets: {
+    front: LabelAsset;
+    back: LabelAsset;
+  };
+  frontDesignS3Url: string | null;
+  backDesignS3Url: string | null;
+};
+type AugmentedLabelSelection = (BaseLabelMini & LabelSelectionExtras) | null;
 
 const Selector: FunctionComponent<{}> = () => {
     const {
@@ -638,6 +655,43 @@ const Selector: FunctionComponent<{}> = () => {
       miniLabel,
     ]);
 
+    const labelAssets = useMemo(() => {
+      const build = (side: 'front' | 'back'): LabelAsset => {
+        const design = (labelDesigns as any)?.[side];
+        if (!design) return null;
+        const s3url =
+          typeof design?.s3url === 'string' ? design.s3url :
+          typeof design?.url === 'string' ? design.url :
+          null;
+        const designId =
+          design?.id ??
+          design?.designId ??
+          design?.design_id ??
+          design?.vistaCreateId ??
+          null;
+        return {
+          designId,
+          s3url,
+          export: design,
+        };
+      };
+      return {
+        front: build('front'),
+        back: build('back'),
+      } as const;
+    }, [labelDesigns]);
+
+    const labelSelectionWithAssets = useMemo<AugmentedLabelSelection>(() => {
+      if (!selections.label) return null;
+      const base = selections.label as BaseLabelMini;
+      return {
+        ...base,
+        assets: labelAssets,
+        frontDesignS3Url: labelAssets.front?.s3url ?? null,
+        backDesignS3Url: labelAssets.back?.s3url ?? null,
+      };
+    }, [selections.label, labelAssets]);
+
     // Speed Change
     
     // Key that only changes when meaningful order fields change, closure id excluded to avoid transient updates during attribute switch
@@ -711,6 +765,9 @@ const Selector: FunctionComponent<{}> = () => {
         hasClosureSelection &&
         (!hasBottleStep || hasBottleSelection);
 
+      const resolvedLabelSelection: Mini =
+        (labelSelectionWithAssets as unknown as Mini) ?? selections.label;
+
       return {
         sku: product?.sku ?? null,
         price,
@@ -719,12 +776,13 @@ const Selector: FunctionComponent<{}> = () => {
           bottle: selections.bottle,
           liquid: selections.liquid,
           closure: selections.closure,
-          label: selections.label,
+          label: resolvedLabelSelection,
           // carry VistaCreate design IDs for edit flow
           frontDesignId: (labelDesigns as any)?.front?.id ?? null,
           backDesignId:  (labelDesigns as any)?.back?.id  ?? null,
         },
         mesh: { frontMeshId, backMeshId },
+        labels: labelAssets,
         valid,
       } as const;
     }, [
@@ -734,6 +792,8 @@ const Selector: FunctionComponent<{}> = () => {
       getMeshIDbyName,
       labelDesigns,
       bottleSlug,
+      labelAssets,
+      labelSelectionWithAssets,
       hasBottleSelection,
       hasBottleStep,
       hasClosureSelection,
@@ -1021,6 +1081,47 @@ const Selector: FunctionComponent<{}> = () => {
 
           if (!designSide ) return;
 
+          const buildLabelMessagePayload = () => {
+            const currentSelection = productObject.selections.label;
+            const supportsExtras =
+              !!currentSelection &&
+              typeof currentSelection === 'object' &&
+              'frontDesignS3Url' in currentSelection &&
+              'backDesignS3Url' in currentSelection;
+            const existingFront = supportsExtras
+              ? (currentSelection as BaseLabelMini & LabelSelectionExtras).frontDesignS3Url
+              : null;
+            const existingBack = supportsExtras
+              ? (currentSelection as BaseLabelMini & LabelSelectionExtras).backDesignS3Url
+              : null;
+
+            const asset = {
+              designId: designExport?.id ?? designExport?.designId ?? null,
+              s3url: typeof designExport?.s3url === 'string' ? designExport.s3url : null,
+              export: designExport,
+            };
+            const labelsBase = productObject.labels ?? { front: null, back: null };
+            const mergedLabels = {
+              ...labelsBase,
+              [designSide]: asset,
+            };
+            const mergedLabelSelection = productObject.selections.label
+              ? {
+                  ...productObject.selections.label,
+                  assets: mergedLabels,
+                  frontDesignS3Url:
+                    designSide === 'front'
+                      ? asset.s3url ?? existingFront
+                      : existingFront,
+                  backDesignS3Url:
+                    designSide === 'back'
+                      ? asset.s3url ?? existingBack
+                      : existingBack,
+                }
+              : null;
+            return { mergedLabels, mergedLabelSelection };
+          };
+
           const targetArea = findLabelArea(designSide);
           console.log("targetArea", targetArea);
           if (!targetArea) {
@@ -1054,6 +1155,7 @@ const Selector: FunctionComponent<{}> = () => {
               console.log("populated", populated);
               markDomLabelReady('front');
 
+              const { mergedLabels, mergedLabelSelection } = buildLabelMessagePayload();
               window.parent.postMessage({
                 customMessageType: 'labelAdded',
                 message: {
@@ -1061,8 +1163,9 @@ const Selector: FunctionComponent<{}> = () => {
                     'bottle': productObject.selections.bottle,
                     'liquid': productObject.selections.liquid,
                     'closure': productObject.selections.closure,
-                    'label': productObject.selections.label,
+                    'label': mergedLabelSelection ?? productObject.selections.label,
                   },
+                  'labels': mergedLabels,
                   'designSide': designSide,
                   'designExport': designExport,
                   'productSku': product?.sku ?? null,
@@ -1094,7 +1197,7 @@ const Selector: FunctionComponent<{}> = () => {
               }
               markDomLabelReady('back');
 
-
+              const { mergedLabels, mergedLabelSelection } = buildLabelMessagePayload();
               window.parent.postMessage({
                 customMessageType: 'labelAdded',
                 message: {
@@ -1102,8 +1205,9 @@ const Selector: FunctionComponent<{}> = () => {
                     'bottle': productObject.selections.bottle,
                     'liquid': productObject.selections.liquid,
                     'closure': productObject.selections.closure,
-                    'label': productObject.selections.label,
+                    'label': mergedLabelSelection ?? productObject.selections.label,
                   },
+                  'labels': mergedLabels,
                   'designSide': designSide,
                   'designExport': designExport,
                   'productSku': product?.sku ?? null,
@@ -1293,6 +1397,7 @@ const Selector: FunctionComponent<{}> = () => {
         closure: productObject.selections.closure,
         label: productObject.selections.label,
       },
+      labels: productObject.labels,
       productSku: product?.sku ?? null,
       price,
     }), [productObject, product?.sku, price]);
@@ -1316,6 +1421,14 @@ const Selector: FunctionComponent<{}> = () => {
         return;
       }
       postSelectionsToParent('uploadLabels');
+    }, [canDesign, postSelectionsToParent, warnMissingSelections]);
+
+    const handleEditLabel = useCallback(() => {
+      if (!canDesign) {
+        warnMissingSelections(' before uploading labels.');
+        return;
+      }
+      postSelectionsToParent('editLabels');
     }, [canDesign, postSelectionsToParent, warnMissingSelections]);
 
 
@@ -1403,6 +1516,7 @@ const Selector: FunctionComponent<{}> = () => {
                         liquid: productObject.selections.liquid,
                         closure: productObject.selections.closure,
                         label: productObject.selections.label,
+                        labels: productObject.labels,
                     }
                 }, "*");
 
@@ -1491,16 +1605,14 @@ const Selector: FunctionComponent<{}> = () => {
             {onLabelStep && (
               <ActionsCenter>
                 {labelsPopulated ? (
-                  <CartButton
-                    onClick={handleAddToCart}
-                    disabled={!showAddToCartButton || isAddToCartLoading}
-                  >
-                    {isAddToCartLoading ? (
-                      <ClipLoader color="#FFFFFF" size={40} loading={true} />
-                    ) : (
-                      'Save and Order'
-                    )}
-                  </CartButton>
+                  <button
+                      className="configurator-button"
+                      disabled={!canDesign}
+                      title={!canDesign ? 'Select liquid, and closure first' : undefined}
+                      onClick={handleEditLabel}
+                    >
+                      Edit Your Label
+                    </button>
                 ) : (
                   <>
                     <button
