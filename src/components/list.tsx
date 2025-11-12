@@ -38,7 +38,7 @@ export const OptionListItem = styled.li<{
 export const NavButton = styled.button`
   background: none;
   border: none;
-  font-size: 24px;
+  font-size: 36px;
   cursor: pointer;
   padding: 4px 12px;
   color: #333;

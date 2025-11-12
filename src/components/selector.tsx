@@ -1486,6 +1486,7 @@ const Selector: FunctionComponent<{}> = () => {
     const postSelectionsToParent = useCallback((customMessageType: string) => {
       const message = buildSelectionsMessage();
       window.parent.postMessage({ customMessageType, message }, '*');
+      console.log("Parent Message posted from Zakeke", { customMessageType, message });
     }, [buildSelectionsMessage]);
 
     const handleDesignWithAi = useCallback(() => {
