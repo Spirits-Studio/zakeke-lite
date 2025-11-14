@@ -9,8 +9,10 @@ export const OptionListItem = styled.li<{
 }>`
   display: flex;
   align-items: center;
-  padding: 16px;
+  justify-content: center;
+  padding: 12px;
   margin-bottom: 12px;
+  font-size: 13px;
   width: ${({ $width }) => $width || '200px'};
   border: 1px solid ${({ $selected }) => ($selected ? '#222' : '#ddd')};
   background-color: ${({ $selected }) => ($selected ? '#f3f3fa' : '#fff')};
