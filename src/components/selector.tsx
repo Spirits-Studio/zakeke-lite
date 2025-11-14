@@ -273,7 +273,7 @@ const Selector: FunctionComponent<{}> = () => {
 
 
     const allowedParentOrigins = useMemo(() => {
-      const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk', 'http://localhost:3000', 'https://localhost:3000'])
+      const envList = (['https://create.spiritsstudio.co.uk','https://spiritsstudio.co.uk', 'http://localhost:3000', 'https://localhost:3000', 'http://127.0.0.1:9292'])
         .map(origin => origin.trim())
         .filter(Boolean);
       const globalList =
