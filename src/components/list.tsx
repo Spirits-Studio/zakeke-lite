@@ -172,9 +172,13 @@ export const Container = styled.div`
   overflow: auto;
   border-top: 6px solid black;
   padding: 24px;
+  padding-top: calc(24px + var(--safe-top));
+  padding-bottom: calc(24px + var(--safe-bottom));
   box-sizing: border-box;
   @media (max-width: 767px) {
-    padding: 0 2px;
+    padding: 16px;
+    padding-top: calc(16px + var(--safe-top));
+    padding-bottom: calc(16px + var(--safe-bottom));
   }
 `;
 
@@ -208,7 +212,7 @@ export const CartBarContainer = styled.div`
   position: sticky;
   bottom: 0;
   background: #fff;
-  padding: 16px 16px calc(24px + env(safe-area-inset-bottom));
+  padding: 16px 16px calc(24px + var(--safe-bottom));
   border-top: 1px solid #ccc;
   z-index: 100;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);

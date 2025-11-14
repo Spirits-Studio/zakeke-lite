@@ -10,6 +10,18 @@ html,body {
 
 }
 
+:root {
+  --safe-top: 0px;
+  --safe-bottom: 0px;
+}
+
+@supports (padding: env(safe-area-inset-top)) {
+  :root {
+    --safe-top: env(safe-area-inset-top);
+    --safe-bottom: env(safe-area-inset-bottom);
+  }
+}
+
 * {
   box-sizing: border-box;
 }

@@ -55,7 +55,7 @@ const SelectorPanel = styled.div`
 
   @media (max-width: 767px) {
     order: 1;
-    height: 30vh;
+    height: 40vh;
   }
 `;
 
@@ -64,7 +64,7 @@ const ViewerPanel = styled.div`
 
   @media (max-width: 767px) {
     order: 0;
-    height: 70vh;
+    height: 60vh;
   }
 `;
 
