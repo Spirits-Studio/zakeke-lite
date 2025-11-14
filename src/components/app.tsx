@@ -36,12 +36,37 @@ function getBootstrapParameters(): Record<string, any> {
 }
 
 const Layout = styled.div`
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    grid-gap: 40px;
-    height: 100%;
-    padding: 40px;
-`
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-gap: 40px;
+  height: 100%;
+  padding: 40px;
+
+  @media (max-width: 767px) {
+    display: flex;
+    flex-direction: column;
+    padding: 16px;
+    gap: 12px;
+  }
+`;
+
+const SelectorPanel = styled.div`
+  min-height: 0;
+
+  @media (max-width: 767px) {
+    order: 1;
+    height: 30vh;
+  }
+`;
+
+const ViewerPanel = styled.div`
+  min-height: 0;
+
+  @media (max-width: 767px) {
+    order: 0;
+    height: 70vh;
+  }
+`;
 
 const zakekeEnvironment = new ZakekeEnvironment();
 
@@ -49,8 +74,12 @@ const App: FunctionComponent<{}> = () => {
     const bootstrapParameters = getBootstrapParameters();
     return <ZakekeProvider environment={zakekeEnvironment} parameters={bootstrapParameters}>
         <Layout>
-            <Selector />
-            <div><ZakekeViewer /></div>
+            <SelectorPanel>
+                <Selector />
+            </SelectorPanel>
+            <ViewerPanel>
+                <ZakekeViewer />
+            </ViewerPanel>
         </Layout>
     </ZakekeProvider>;
 }

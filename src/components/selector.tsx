@@ -1619,7 +1619,7 @@ const Selector: FunctionComponent<{}> = () => {
 
     return (
       <>
-        <RotateNotice>Please rotate your device to landscape for the best experience.</RotateNotice>
+        {/* <RotateNotice>Please rotate your device to landscape for the best experience.</RotateNotice> */}
         <ConfigWarning />
         <LayoutWrapper>
         <ContentWrapper>

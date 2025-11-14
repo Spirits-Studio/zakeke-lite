@@ -32,6 +32,16 @@ export const OptionListItem = styled.li<{
     transform: translateY(0px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
   }
+
+  @media (max-width: 768px) and (orientation: portrait) {
+    padding: 5px;
+    margin: 0px;
+    font-size: .75rem;
+    flex-direction: row;
+    justify-content: center;
+    gap: 2px;
+    width: auto;
+  }
 `;
 
 
@@ -142,11 +152,17 @@ export const LayoutWrapper = styled.div`
   height: 100vh;
   display: flex;
   flex-direction: column;
-  `;
-  
-  export const ContentWrapper = styled.div`
+  position: relative;
+
+  @media (max-width: 768px) and (orientation: portrait) {
+    height: auto;
+  }
+`;
+
+export const ContentWrapper = styled.div`
   flex: 1;
   overflow-y: auto;
+  position: relative;
 `;
 
 export const Container = styled.div`
@@ -155,6 +171,9 @@ export const Container = styled.div`
   border-top: 6px solid black;
   padding: 24px;
   box-sizing: border-box;
+  @media (max-width: 767px) {
+    padding: 0 2px;
+  }
 `;
 
 
@@ -172,6 +191,13 @@ export const NotesWrapper = styled.div`
   p {
     margin: 8px 0 0;
     color: #555;
+  }
+
+  @media (max-width: 767px) {
+    margin-top: 0px;
+    padding: 0px;
+    height: 0;
+    display:none;
   }
 `;
 
