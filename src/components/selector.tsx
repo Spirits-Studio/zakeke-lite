@@ -1729,7 +1729,7 @@ const Selector: FunctionComponent<{}> = () => {
             )}
           </Container>
         </ContentWrapper>
-        <ViewportSpacer />
+        {/* <ViewportSpacer /> */}
         <CartBar
           price={price}
           showButton={showAddToCartButton}

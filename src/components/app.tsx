@@ -40,6 +40,7 @@ const Layout = styled.div`
   grid-template-columns: repeat(2, minmax(0, 1fr));
   grid-gap: 40px;
   height: 100%;
+  max-height: 100%;
   padding: 40px;
 
   @media (max-width: 767px) {
@@ -55,7 +56,7 @@ const SelectorPanel = styled.div`
 
   @media (max-width: 767px) {
     order: 1;
-    height: 40vh;
+    flex: 0 0 40%;
   }
 `;
 
@@ -64,7 +65,7 @@ const ViewerPanel = styled.div`
 
   @media (max-width: 767px) {
     order: 0;
-    height: 60vh;
+    flex: 0 0 60%;
   }
 `;
 

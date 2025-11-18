@@ -79,7 +79,8 @@ export const LoadingSpinner = styled.div`
   display: flex;
   align-items: center;
   justify-content: center;
-  height: 100vh;
+  height: 100%;
+  max-height: 100%;
 
   &::after {
     content: "";
@@ -151,34 +152,28 @@ export const RotateNotice = styled.div`
 `;
 
 export const LayoutWrapper = styled.div`
-  min-height: 100vh;
   display: flex;
   flex-direction: column;
   position: relative;
-
-  @supports (height: 100dvh) {
-    min-height: 100dvh;
-  }
+  height: 100%;
+  max-height: 100%;
 `;
 
 export const ContentWrapper = styled.div`
-  flex: 1;
-  overflow-y: auto;
   position: relative;
 `;
 
 export const Container = styled.div`
-  height: 100%;
-  overflow: auto;
   border-top: 6px solid black;
   padding: 24px;
   padding-top: calc(24px + var(--safe-top));
-  padding-bottom: calc(24px + var(--safe-bottom));
+  padding-bottom: 24px;
   box-sizing: border-box;
+
   @media (max-width: 767px) {
     padding: 16px;
     padding-top: calc(16px + var(--safe-top));
-    padding-bottom: calc(16px + var(--safe-bottom));
+    padding-bottom: 16px;
   }
 `;
 
@@ -250,8 +245,11 @@ export const CartBar: React.FC<{
 
 export const ViewportSpacer = styled.div`
   flex: 0 0 auto;
-  height: 96px;
-  height: calc(72px + env(safe-area-inset-bottom));
+  height: 0;
+
+  @supports (height: env(safe-area-inset-bottom)) {
+    height: env(safe-area-inset-bottom);
+  }
 `;
 
 export const NavContainer = styled.div`
@@ -315,6 +313,8 @@ export const OptionsWrap = styled.div`
 export const OptionText = styled.div`
   display: flex;
   flex-direction: column;
+  align-items: center;
+  text-align: center;
 `;
 
 export const OptionTitle = styled.span<{ $selected?: boolean }>`
