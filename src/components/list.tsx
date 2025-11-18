@@ -151,13 +151,13 @@ export const RotateNotice = styled.div`
 `;
 
 export const LayoutWrapper = styled.div`
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   position: relative;
 
-  @media (max-width: 768px) and (orientation: portrait) {
-    height: auto;
+  @supports (height: 100dvh) {
+    min-height: 100dvh;
   }
 `;
 
@@ -212,10 +212,14 @@ export const CartBarContainer = styled.div`
   position: sticky;
   bottom: 0;
   background: #fff;
-  padding: 16px 16px calc(24px + var(--safe-bottom));
+  padding: 16px 16px 24px;
   border-top: 1px solid #ccc;
   z-index: 100;
   box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.06);
+
+  @supports (padding-bottom: env(safe-area-inset-bottom)) {
+    padding-bottom: calc(24px + env(safe-area-inset-bottom));
+  }
 `;
 
 export const CartBarInner = styled.div`
@@ -252,8 +256,8 @@ export const ViewportSpacer = styled.div`
 
 export const NavContainer = styled.div`
   display: flex;
-  alignItems: center;
-  justifyContent: space-between;
+  align-items: center;
+  justify-content: space-between;
   margin: 16px 0;
 `;
 
