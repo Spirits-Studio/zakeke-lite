@@ -4,7 +4,6 @@ import { useZakeke } from 'zakeke-configurator-react';
 import { LayoutWrapper, ContentWrapper, Container, OptionListItem, RotateNotice, LoadingSpinner, NotesWrapper, CartBar, StepNav, OptionsWrap, OptionText, OptionTitle, OptionDescription, ActionsCenter, ConfigWarning, ViewportSpacer, CartButton } from './list';
 // import { List, StepListItem, , ListItemImage } from './list';
 import { optionNotes } from '../data/option-notes';
-// import { ClipLoader } from 'react-loader-spinner';
 import ClipLoader from 'react-spinners/ClipLoader';
 
 import { useOrderStore } from '../state/orderStore';
